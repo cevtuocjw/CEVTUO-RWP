@@ -49,10 +49,8 @@ ART＆FASHION-2026-09-05.epub   FINANCE-2026-09-05.epub   Japan-2026-09-05.epub 
 
 > Chrome 没开调试口时该层会自动跳过、不报错,退回公开抓取/摘要。
 
-### 换用可用的 RSSHub 实例
-你的订阅里有约 25 个源走 `rsshub.app` 公共实例,它返回 403。可在 `config.json` 里把
-`"rsshub_base"` 设成你能用的实例(自建或他人可用实例),例如 `"https://rsshub.example.com"`,
-所有 `rsshub.app` 源会自动换过去。留空表示仍用默认。
+可自行添加或者更换修改自己的rss实例。
+已打包我的日常关注rss进入扩展作为默认例子
 
 ### config.json 结构示例
 
