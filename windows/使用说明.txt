@@ -1,0 +1,34 @@
+CEVTUO-RWP2EPUB — Windows
+=========================
+
+怎么启动
+--------
+1. 解压 CEVTUO-RWP2EPUB-windows.zip
+2. 进入解压出来的 CEVTUO-RWP2EPUB 文件夹
+3. 双击 CEVTUO-RWP2EPUB.cmd   ← 启动入口就是这个文件
+
+会自己弹出一个独立窗口(用系统自带 Edge 的 app 模式,没有地址栏)。
+不需要安装 Python,不需要装任何依赖 —— 运行时都在这个文件夹里。
+
+如果弹出「Windows 已保护你的电脑」
+---------------------------------
+这是 SmartScreen 对从网上下载的脚本的例行提示,不是病毒警告。
+点「更多信息」→「仍要运行」即可。
+
+环境要求
+--------
+- Windows 10 / 11 (x64)
+- 渲染网页需要一个 Chromium 内核的浏览器。Windows 10/11 自带 Edge,通常无需额外安装。
+
+数据保存在哪
+------------
+%LOCALAPPDATA%\CEVTUO-RWP2EPUB
+里面有 output/(每日书)、books/(合集导出)、history/、state/、logs/。
+
+已知限制
+--------
+- 定时自动生成功能在 Windows 版暂不可用(需要另接计划任务)。
+  界面上的「一键生成」正常可用。
+- 本安装包未在真实 Windows 机器上测试过,如有问题请提 Issue。
+
+author: cevtuo
