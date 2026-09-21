@@ -23,21 +23,24 @@
     }
   }
   *{box-sizing:border-box}
+  html{background:#2a0c06}
   body{
     margin:0;min-height:100vh;color:var(--ink);
     font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Arial,sans-serif;
-    background:var(--bg1);overflow-x:hidden;
+    overflow-x:hidden;
+    /* 背景图:fixed + cover —— 无论窗口尺寸、滚动位置都完全覆盖视口 */
+    background-color:#2a0c06;
+    background-image:url("bg.jpg");
+    background-position:center center;
+    background-size:cover;
+    background-repeat:no-repeat;
+    background-attachment:fixed;
   }
-  .aurora{position:fixed;inset:-20%;z-index:0;filter:blur(90px);pointer-events:none}
-  .aurora i{position:absolute;display:block;border-radius:50%;opacity:.4}
-  .aurora .a{width:44vw;height:44vw;left:-6%;top:-4%;background:#5b8cff;animation:d1 34s var(--ease) infinite alternate}
-  .aurora .b{width:38vw;height:38vw;right:-4%;top:4%;background:#a97bff;animation:d2 41s var(--ease) infinite alternate}
-  .aurora .c{width:48vw;height:48vw;left:14%;bottom:-24%;background:#37d4c4;animation:d3 47s var(--ease) infinite alternate}
-  .aurora .d{width:16vw;height:16vw;left:52%;top:24%;background:#fff;opacity:.2;animation:d1 29s var(--ease) infinite alternate-reverse}
-  @keyframes d1{to{transform:translate3d(8vw,6vh,0) scale(1.14)}}
-  @keyframes d2{to{transform:translate3d(-10vw,8vh,0) scale(1.09)}}
-  @keyframes d3{to{transform:translate3d(6vw,-9vh,0) scale(1.16)}}
-  @media (prefers-reduced-motion: reduce){.aurora i{animation:none}}
+  /* 图上压一层很淡的暗化,让玻璃面板上的字更稳(不改变图片本身观感) */
+  body::before{
+    content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:linear-gradient(180deg,rgba(0,0,0,.06) 0%,rgba(0,0,0,.20) 55%,rgba(0,0,0,.38) 100%);
+  }
 
   .glass{
     background:rgba(var(--panel),.62);
@@ -128,13 +131,19 @@
   .launch ul li{margin-bottom:6px;font-size:13px;color:var(--soft);line-height:1.65}
   .launch ul li b{color:var(--ink)}
 
+  /* 页脚没有玻璃面板,直接压在背景图上 —— 背景是深色的,
+     所以这里固定用浅色字 + 投影,不能跟着主题走,否则浅色主题下会看不见 */
   footer{margin-top:auto;padding:70px 0 44px;text-align:center}
-  footer img{width:78px;height:78px;filter:drop-shadow(0 6px 16px rgba(30,44,70,.3));margin-bottom:16px}
-  .wordmark{font-size:19px;font-weight:700;letter-spacing:3.5px;color:var(--ink);margin:0}
-  .wordmark2{font-size:13px;font-weight:600;letter-spacing:5.5px;color:var(--faint);
-    margin:8px 0 0;text-transform:uppercase}
-  .rule{width:70px;height:1px;background:var(--line2);margin:22px auto}
-  .fine{font-size:12px;color:var(--faint);margin:0}
+  footer img{width:78px;height:78px;
+    filter:drop-shadow(0 8px 22px rgba(0,0,0,.62));margin-bottom:16px}
+  .wordmark{font-size:19px;font-weight:700;letter-spacing:3.5px;margin:0;
+    color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.62)}
+  .wordmark2{font-size:13px;font-weight:600;letter-spacing:5.5px;margin:8px 0 0;
+    text-transform:uppercase;color:rgba(255,255,255,.74);
+    text-shadow:0 2px 12px rgba(0,0,0,.58)}
+  .rule{width:70px;height:1px;background:rgba(255,255,255,.32);margin:22px auto}
+  .fine{font-size:12px;margin:0;color:rgba(255,255,255,.62);
+    text-shadow:0 1px 8px rgba(0,0,0,.55)}
 </style>
 </head>
 <body>
@@ -148,8 +157,6 @@
     <path d="M0 3.449 9.75 2.1v9.451H0V3.449zM11.1 1.921 24 0v11.4H11.1V1.921zM0 12.6h9.75v9.451L0 20.699V12.6zM11.1 12.6H24V24l-12.9-1.801V12.6z"/>
   </symbol>
 </svg>
-
-<div class="aurora"><i class="a"></i><i class="b"></i><i class="c"></i><i class="d"></i></div>
 
 <div class="wrap">
   <header class="glass">
