@@ -1,0 +1,17 @@
+[project]
+name = "rss-daily-epub"
+version = "0.1.0"
+description = "每日抓取 RSS 并按 OPML 分类生成 epub"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "feedparser>=6.0.11",
+    "ebooklib>=0.18",
+    "trafilatura>=2.0",
+    "requests>=2.31",
+    "pillow>=12.3.0",
+    "websocket-client>=1.9.2",
+]
+
+[tool.uv]
+# 系统默认是 3.14,lxml 等依赖可能还没有匹配轮子,固定到 3.12
+python-preference = "managed"

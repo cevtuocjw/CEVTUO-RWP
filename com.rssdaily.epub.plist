@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.rssdaily.epub</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/cjw/Library/Application Support/RSSDailyEpub/run_daily.sh</string>
+    </array>
+
+    <!-- 每天 09:00(本机时区) -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>9</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/cjw/Library/Application Support/RSSDailyEpub</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/cjw/Library/Application Support/RSSDailyEpub/logs/launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/cjw/Library/Application Support/RSSDailyEpub/logs/launchd.err.log</string>
+
+    <!-- 保证机器开着且已登录用户环境下运行 -->
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>CEVTUO-RWP2EPUB — 网页 / RSS 变成电子书</title>
+<meta name="description" content="把网页、网站内链接、RSS 订阅和 Markdown 做成 EPUB 电子书。原生桌面应用，自带运行时，开箱即用。"/>
+<link rel="icon" href="logo.png"/>
+<style>
+  :root{
+    --bg1:#eef2f8; --bg2:#dfe7f3; --bg3:#f6f0f6; --bg4:#e6eef7;
+    --ink:#12161d; --soft:#4a5261; --faint:#79839a;
+    --panel:255,255,255; --line:rgba(255,255,255,.72); --line2:rgba(120,135,160,.22);
+    --accent:#2f6feb; --shadow:0 14px 40px rgba(38,52,80,.16),0 2px 8px rgba(38,52,80,.08);
+    --r:26px; --ease:cubic-bezier(.32,.72,0,1);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg1:#0c1017; --bg2:#141b26; --bg3:#1b1524; --bg4:#0f1a22;
+      --ink:#eef2f8; --soft:#a9b4c6; --faint:#7b8698;
+      --panel:22,28,38; --line:rgba(255,255,255,.13); --line2:rgba(255,255,255,.09);
+      --accent:#5b93ff; --shadow:0 18px 50px rgba(0,0,0,.55),0 2px 10px rgba(0,0,0,.4);
+    }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;min-height:100vh;color:var(--ink);
+    font:16px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+    background:var(--bg1);overflow-x:hidden;
+  }
+  /* 流动光效 —— 玻璃面板要透出变化才像玻璃 */
+  .aurora{position:fixed;inset:-20%;z-index:0;filter:blur(90px);pointer-events:none}
+  .aurora i{position:absolute;display:block;border-radius:50%;opacity:.4}
+  .aurora .a{width:44vw;height:44vw;left:-6%;top:-4%;background:#5b8cff;animation:d1 34s var(--ease) infinite alternate}
+  .aurora .b{width:38vw;height:38vw;right:-4%;top:4%;background:#a97bff;animation:d2 41s var(--ease) infinite alternate}
+  .aurora .c{width:48vw;height:48vw;left:14%;bottom:-24%;background:#37d4c4;animation:d3 47s var(--ease) infinite alternate}
+  .aurora .d{width:16vw;height:16vw;left:52%;top:24%;background:#fff;opacity:.2;animation:d1 29s var(--ease) infinite alternate-reverse}
+  @keyframes d1{to{transform:translate3d(8vw,6vh,0) scale(1.14)}}
+  @keyframes d2{to{transform:translate3d(-10vw,8vh,0) scale(1.09)}}
+  @keyframes d3{to{transform:translate3d(6vw,-8vh,0) scale(1.16)}}
+  @media (prefers-reduced-motion: reduce){.aurora i{animation:none}}
+
+  .glass{
+    background:rgba(var(--panel),.62);
+    backdrop-filter:blur(30px) saturate(180%);
+    -webkit-backdrop-filter:blur(30px) saturate(180%);
+    border:1px solid var(--line);
+    box-shadow:var(--shadow), inset 0 1px 0 rgba(255,255,255,.55);
+    border-radius:var(--r);
+  }
+  .wrap{position:relative;z-index:1;max-width:960px;margin:0 auto;padding:56px 22px 0;
+    display:flex;flex-direction:column;min-height:100vh}
+
+  /* ---------- 头部 ---------- */
+  header{text-align:center;padding:44px 26px 40px}
+  header img{width:132px;height:132px;filter:drop-shadow(0 8px 20px rgba(30,44,70,.34))}
+  h1{font-size:clamp(28px,4.6vw,44px);margin:18px 0 6px;letter-spacing:-.5px;font-weight:750}
+  .sub{font-size:17px;color:var(--soft);margin:0 auto;max-width:620px}
+  .byline{margin-top:12px;font-size:13.5px;color:var(--faint)}
+  .byline b{color:var(--soft);font-weight:600}
+
+  /* ---------- 下载按钮 ---------- */
+  .dl{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin:34px 0 10px}
+  .btn{
+    display:flex;align-items:center;gap:13px;padding:15px 26px;min-width:236px;
+    text-decoration:none;color:var(--ink);border-radius:20px;cursor:pointer;
+    background:rgba(var(--panel),.66);
+    backdrop-filter:blur(24px) saturate(180%);
+    -webkit-backdrop-filter:blur(24px) saturate(180%);
+    border:1px solid var(--line);
+    box-shadow:var(--shadow), inset 0 1px 0 rgba(255,255,255,.6);
+    transition:transform .2s var(--ease), box-shadow .2s var(--ease);
+  }
+  .btn:hover{transform:translateY(-3px);box-shadow:0 20px 52px rgba(38,52,80,.24), inset 0 1px 0 rgba(255,255,255,.7)}
+  .btn:active{transform:translateY(-1px) scale(.99)}
+  .btn .ico{font-size:26px;line-height:1}
+  .btn .tx{text-align:left}
+  .btn .tx b{display:block;font-size:16px;font-weight:680}
+  .btn .tx small{display:block;font-size:12.5px;color:var(--faint)}
+  .btn.primary{
+    background:linear-gradient(180deg,var(--accent),color-mix(in srgb,var(--accent) 84%,#000));
+    color:#fff;border-color:transparent;
+    box-shadow:0 12px 34px color-mix(in srgb,var(--accent) 40%,transparent), inset 0 1px 0 rgba(255,255,255,.35);
+  }
+  .btn.primary .tx small{color:rgba(255,255,255,.8)}
+  .note{font-size:12.5px;color:var(--faint);text-align:center;margin:14px 0 0}
+  .note code{background:rgba(var(--panel),.6);padding:2px 7px;border-radius:6px;
+    border:1px solid var(--line2);font-size:12px}
+
+  /* ---------- 功能 ---------- */
+  .features{display:grid;grid-template-columns:repeat(auto-fit,minmax(258px,1fr));
+    gap:16px;margin:44px 0 0}
+  .feat{padding:22px 24px;border-radius:22px;
+    background:rgba(var(--panel),.55);
+    backdrop-filter:blur(26px) saturate(170%);
+    -webkit-backdrop-filter:blur(26px) saturate(170%);
+    border:1px solid var(--line);box-shadow:var(--shadow), inset 0 1px 0 rgba(255,255,255,.5)}
+  .feat h3{margin:0 0 7px;font-size:15.5px;font-weight:660}
+  .feat p{margin:0;font-size:14px;color:var(--soft)}
+
+  /* ---------- 页脚 ---------- */
+  footer{margin-top:auto;padding:70px 0 44px;text-align:center}
+  footer img{width:78px;height:78px;filter:drop-shadow(0 6px 16px rgba(30,44,70,.3));margin-bottom:16px}
+  .wordmark{font-size:19px;font-weight:700;letter-spacing:3.5px;color:var(--ink);margin:0}
+  .wordmark2{font-size:13px;font-weight:600;letter-spacing:5.5px;color:var(--faint);
+    margin:8px 0 0;text-transform:uppercase}
+  .rule{width:70px;height:1px;background:var(--line2);margin:22px auto}
+  .fine{font-size:12px;color:var(--faint);margin:0}
+</style>
+</head>
+<body>
+<div class="aurora"><i class="a"></i><i class="b"></i><i class="c"></i><i class="d"></i></div>
+
+<div class="wrap">
+  <header class="glass">
+    <img src="logo.png" alt="CEVTUO-RWP2EPUB"/>
+    <h1>CEVTUO-RWP2EPUB</h1>
+    <p class="sub">把网页、网站内链接、RSS 订阅和 Markdown 做成 EPUB 电子书。<br/>
+      原生桌面应用,自带运行时,下载即用。</p>
+    <p class="byline">author: <b>cevtuo</b></p>
+
+    <div class="dl">
+      <a class="btn primary" href="https://github.com/cevtuocjw/CEVTUO-RWP2EPUB/releases/latest/download/CEVTUO-RWP2EPUB-macOS.dmg">
+        <span class="ico"></span>
+        <span class="tx"><b>下载 macOS 版</b><small>.dmg · Apple Silicon · 约 100 MB</small></span>
+      </a>
+      <a class="btn" href="https://github.com/cevtuocjw/CEVTUO-RWP2EPUB/releases/latest/download/CEVTUO-RWP2EPUB-windows.zip">
+        <span class="ico">⊞</span>
+        <span class="tx"><b>下载 Windows 版</b><small>.zip · Windows 10/11 · 约 100 MB</small></span>
+      </a>
+    </div>
+
+    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line2)">
+      <div style="font-size:12.5px;color:var(--faint);margin-bottom:9px">大陆网络直连 GitHub 可能很慢,可用下面的加速镜像(内容与官方完全相同)</div>
+      <div style="display:flex;gap:9px;justify-content:center;flex-wrap:wrap">
+        <a class="btn" style="min-width:auto;padding:9px 15px" href="https://ghproxy.net/https://github.com/cevtuocjw/CEVTUO-RWP2EPUB/releases/latest/download/CEVTUO-RWP2EPUB-macOS.dmg"><span class="tx"><b style="font-size:13.5px">macOS · ghproxy.net</b></span></a>
+        <a class="btn" style="min-width:auto;padding:9px 15px" href="https://gh-proxy.com/https://github.com/cevtuocjw/CEVTUO-RWP2EPUB/releases/latest/download/CEVTUO-RWP2EPUB-macOS.dmg"><span class="tx"><b style="font-size:13.5px">macOS · gh-proxy.com</b></span></a>
+        <a class="btn" style="min-width:auto;padding:9px 15px" href="https://ghfast.top/https://github.com/cevtuocjw/CEVTUO-RWP2EPUB/releases/latest/download/CEVTUO-RWP2EPUB-macOS.dmg"><span class="tx"><b style="font-size:13.5px">macOS · ghfast.top</b></span></a>
+        <a class="btn" style="min-width:auto;padding:9px 15px" href="https://ghproxy.net/https://github.com/cevtuocjw/CEVTUO-RWP2EPUB/releases/latest/download/CEVTUO-RWP2EPUB-windows.zip"><span class="tx"><b style="font-size:13.5px">Windows · ghproxy.net</b></span></a>
+      </div>
+    </div>
+
+    <p class="note">macOS 首次打开请<b>右键 → 打开</b>(ad-hoc 签名,未经 Apple 公证)<br/>
+      镜像为第三方公共转发服务,只是把 GitHub 的流量中转一下;介意的话请用上面官方直连</p>
+  </header>
+
+  <section class="features">
+    <div class="feat">
+      <h3>多条路都能成书</h3>
+      <p>多个网址、网站内链接、RSS 订阅、Markdown —— 每篇文章就是一个章节,可单独查看与编辑。</p>
+    </div>
+    <div class="feat">
+      <h3>真正的全文</h3>
+      <p>用你自己的浏览器渲染页面再取正文,靠 JavaScript 才显示的内容、存档站页面都能拿到完整全文。</p>
+    </div>
+    <div class="feat">
+      <h3>RSS 每日成书</h3>
+      <p>按分类自动成书,可设每天 / 每隔两三天定时生成,书库里按日期归档。</p>
+    </div>
+    <div class="feat">
+      <h3>没有页数限制</h3>
+      <p>导出多少章都可以,不做任何截断。</p>
+    </div>
+    <div class="feat">
+      <h3>自带运行环境</h3>
+      <p>Python 运行时与全部依赖都在安装包里,目标机器不需要装任何东西。</p>
+    </div>
+    <div class="feat">
+      <h3>书库位置随你放</h3>
+      <p>可以改书库文件夹,已有的书会跟着一起搬过去。</p>
+    </div>
+  </section>
+
+  <footer>
+    <img src="logo.png" alt="CEVTUO"/>
+    <p class="wordmark">CEVTUO CLVNCHET</p>
+    <p class="wordmark2">CEVTUOGRND</p>
+    <div class="rule"></div>
+    <p class="fine">© 2026 cevtuo · CEVTUO-RWP2EPUB</p>
+  </footer>
+</div>
+</body>
+</html>

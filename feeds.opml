@@ -1,0 +1,125 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<opml version="2.0">
+  <head>
+    <dateCreated>2026-08-28T03:46:59.959Z</dateCreated>
+    <title>Follow</title>
+  </head>
+  <body>
+    <outline text="ART＆FASHION">
+      <outline text="Latest Content - Harper's BAZAAR" title="Latest Content - Harper's BAZAAR" xmlUrl="https://www.harpersbazaar.com/rss/all.xml?syndication=true" htmlUrl="https://www.harpersbazaar.com/" type="rss"/>
+      <outline text="Latest Content - Harper's BAZAAR" title="Latest Content - Harper's BAZAAR" xmlUrl="https://www.harpersbazaar.com/tw/rss/default.xml" htmlUrl="https://www.harpersbazaar.com/tw/" type="rss"/>
+      <outline text=" The Art Newspaper - International art news and events " title=" The Art Newspaper - International art news and events " xmlUrl="https://www.theartnewspaper.com/rss.xml" htmlUrl="https://www.theartnewspaper.com/" type="rss"/>
+      <outline text="Colossal" title="Colossal" xmlUrl="https://www.thisiscolossal.com/feed/" htmlUrl="https://www.thisiscolossal.com/" type="rss"/>
+      <outline text="WWD All Topics" title="WWD All Topics" xmlUrl="https://wwd.com/custom-feed/recent-stories/" htmlUrl="https://wwd.com/" type="rss"/>
+      <outline text="WWD Beauty Industry News" title="WWD Beauty Industry News" xmlUrl="https://wwd.com/beauty-industry-news/feed/" htmlUrl="https://wwd.com/" type="rss"/>
+      <outline text="WWD Fashion Shows" title="WWD Fashion Shows" xmlUrl="https://wwd.com/custom-feed/fashion-shows/" htmlUrl="https://wwd.com/" type="rss"/>
+      <outline text="TheWrap" title="TheWrap" xmlUrl="https://www.thewrap.com/feed/" htmlUrl="https://www.thewrap.com/" type="rss"/>
+      <outline text="Deadline" title="Deadline" xmlUrl="https://deadline.com/feed/" htmlUrl="https://deadline.com/" type="rss"/>
+      <outline text="SheerLuxe - Your Guide To Your Best Life " title="SheerLuxe - Your Guide To Your Best Life " xmlUrl="https://sheerluxe.com/rss.xml" htmlUrl="https://sheerluxe.com/" type="rss"/>
+      <outline text="ARTnews.com" title="ARTnews.com" xmlUrl="https://www.artnews.com/feed/" htmlUrl="https://www.artnews.com/" type="rss"/>
+      <outline text="Vogue" title="Vogue" xmlUrl="https://www.vogue.com/feed/rss" htmlUrl="https://www.vogue.com/" type="rss"/>
+      <outline text="Vivienne Westwood (@viviennewestwood) public posts - Picnob" title="Vivienne Westwood (@viviennewestwood) public posts - Picnob" xmlUrl="https://rsshub.app/picnob/user/viviennewestwood" htmlUrl="https://www.picnob.com/profile/viviennewestwood/" type="rss"/>
+      <outline text="Grazia" title="Grazia" xmlUrl="https://graziamagazine.com/feed/" htmlUrl="https://graziamagazine.com/" type="rss"/>
+      <outline text="Fashionista Full" title="Fashionista Full" xmlUrl="https://fashionista.com/.rss/feed/28e21eb8-20ac-4617-a448-e845081591ca.xml" htmlUrl="https://fashionista.com/" type="rss"/>
+      <outline text="Lux Exposé" title="Lux Exposé" xmlUrl="https://luxexpose.com/feed/" htmlUrl="https://luxexpose.com/" type="rss"/>
+      <outline text="Type:  | ArchDaily 中文版" title="Type:  | ArchDaily 中文版" xmlUrl="https://www.archdaily.com/zh/cn.xml" htmlUrl="https://www.archdaily.cn/cn" type="rss"/>
+      <outline text="The Business of Fashion" title="The Business of Fashion" xmlUrl="https://www.businessoffashion.com/arc/outboundfeeds/rss/" htmlUrl="https://www.businessoffashion.com/" type="rss"/>
+      <outline text="Latest Content - Esquire" title="Latest Content - Esquire" xmlUrl="https://www.esquire.com/uk/rss/default.xml" htmlUrl="https://www.esquire.com/uk/" type="rss"/>
+    </outline>
+    <outline text="HACKER NEWSROOM">
+      <outline text="Elevate" title="Elevate" xmlUrl="https://addyo.substack.com/feed" htmlUrl="https://addyo.substack.com/" type="rss"/>
+      <outline text="Apple Newsroom" title="Apple Newsroom" xmlUrl="https://www.apple.com/newsroom/rss-feed.rss" htmlUrl="https://www.apple.com/newsroom/rss-feed.rss" type="rss"/>
+      <outline text="Automotive World" title="Automotive World" xmlUrl="https://www.automotiveworld.com/feed/" htmlUrl="https://www.automotiveworld.com/" type="rss"/>
+      <outline text="AWS Machine Learning Blog" title="AWS Machine Learning Blog" xmlUrl="https://aws.amazon.com/cn/blogs/machine-learning/feed/" htmlUrl="https://aws.amazon.com/blogs/machine-learning/" type="rss"/>
+      <outline text="Google DeepMind Blog" title="Google DeepMind Blog" xmlUrl="https://deepmind.google/blog/rss.xml" htmlUrl="https://deepmind.google/blog/" type="rss"/>
+      <outline text="IBM - Announcements" title="IBM - Announcements" xmlUrl="https://newsroom.ibm.com/announcements?pagetemplate=rss" htmlUrl="https://newsroom.ibm.com/" type="rss"/>
+      <outline text="Knowable Magazine" title="Knowable Magazine" xmlUrl="https://knowablemagazine.org/rss" htmlUrl="https://knowablemagazine.org/" type="rss"/>
+      <outline text="Latest News - Apple Developer" title="Latest News - Apple Developer" xmlUrl="https://developer.apple.com/news/rss/news.rss" htmlUrl="https://developer.apple.com/news/" type="rss"/>
+      <outline text="Meta" title="Meta" xmlUrl="https://about.fb.com/feed/" htmlUrl="https://about.fb.com/feed/" type="rss"/>
+      <outline text="MIT News - Artificial intelligence" title="MIT News - Artificial intelligence" xmlUrl="https://news.mit.edu/rss/topic/artificial-intelligence2" htmlUrl="https://news.mit.edu/rss/topic/artificial-intelligence2" type="rss"/>
+      <outline text="NutraIngredients.com" title="NutraIngredients.com" xmlUrl="https://www.nutraingredients.com/arc/outboundfeeds/rss/" htmlUrl="https://www.nutraingredients.com/" type="rss"/>
+      <outline text="Samsung Global Newsroom" title="Samsung Global Newsroom" xmlUrl="https://news.samsung.com/global/feed" htmlUrl="https://news.samsung.com/global" type="rss"/>
+      <outline text="The Official Microsoft Blog" title="The Official Microsoft Blog" xmlUrl="https://blogs.microsoft.com/feed/" htmlUrl="https://blogs.microsoft.com/" type="rss"/>
+      <outline text="The Verge -  Teslas" title="The Verge -  Teslas" xmlUrl="https://www.theverge.com/rss/tesla/index.xml" htmlUrl="https://www.theverge.com/tesla" type="rss"/>
+      <outline text="The Zapier Blog" title="The Zapier Blog" xmlUrl="https://zapier.com/blog/feeds/latest/" htmlUrl="https://zapier.com/blog" type="rss"/>
+      <outline text="Claude(@claudeai)" title="Claude(@claudeai)" xmlUrl="https://api.xgo.ing/rss/user/01f60d63a61b44d692cc35c7feb0b4a4" htmlUrl="https://x.com/claudeai" type="rss"/>
+      <outline text="OpenAI News" title="OpenAI News" xmlUrl="https://openai.com/news/rss.xml" htmlUrl="https://openai.com/news" type="rss"/>
+      <outline text="Web3研究所 - 即刻圈子" title="Web3研究所 - 即刻圈子" xmlUrl="https://rsshub.app/jike/topic/5738965b6628391200809ff1" htmlUrl="https://m.okjike.com/topics/5738965b6628391200809ff1" type="rss"/>
+      <outline text="Connectionism on Thinking Machines Lab" title="Connectionism on Thinking Machines Lab" xmlUrl="https://thinkingmachines.ai/blog/index.xml" htmlUrl="https://thinkingmachines.ai/blog/" type="rss"/>
+      <outline text="www.theregister.com - Articles" title="www.theregister.com - Articles" xmlUrl="https://api.theregister.com/api/v1/article?orderBy=published&amp;site_id=2&amp;remapper=rss" htmlUrl="https://www.theregister.com/" type="rss"/>
+    </outline>
+    <outline text="hack">
+      <outline text="LessWrong" title="LessWrong" xmlUrl="https://www.lesswrong.com/feed.xml?view=curated-rss" htmlUrl="https://www.lesswrong.com/" type="rss"/>
+      <outline text="Christopher Butler" title="Christopher Butler" xmlUrl="https://www.chrbutler.com/feed.rss" htmlUrl="https://www.chrbutler.com/" type="rss"/>
+      <outline text="The Verge" title="The Verge" xmlUrl="https://www.theverge.com/rss/index.xml" htmlUrl="https://www.theverge.com/" type="rss"/>
+      <outline text="Readhub - 每日早报" title="Readhub - 每日早报" xmlUrl="https://rsshub.app/readhub/daily" htmlUrl="https://api.readhub.cn/daily" type="rss"/>
+      <outline text="Tech Xplore - electronic gadgets, technology advances and research news" title="Tech Xplore - electronic gadgets, technology advances and research news" xmlUrl="https://techxplore.com/rss-feed/" htmlUrl="https://techxplore.com/" type="rss"/>
+      <outline text="Machine learning : nature.com subject feeds" title="Machine learning : nature.com subject feeds" xmlUrl="https://www.nature.com/subjects/machine-learning.rss?error=cookies_not_supported&amp;code=2b4dc376-8393-47a7-9a2d-f7ab48cd9481" htmlUrl="https://www.nature.com/subjects/machine-learning" type="rss"/>
+      <outline text="BigDATAwire" title="BigDATAwire" xmlUrl="https://www.datanami.com/feed/" htmlUrl="https://www.bigdatawire.com/" type="rss"/>
+      <outline text="Biometric Update" title="Biometric Update" xmlUrl="https://feeds.feedburner.com/biometricupdate" htmlUrl="https://www.biometricupdate.com/" type="rss"/>
+      <outline text="Exponential View" title="Exponential View" xmlUrl="https://www.exponentialview.co/feed" htmlUrl="https://www.exponentialview.co/" type="rss"/>
+      <outline text="a16z crypto" title="a16z crypto" xmlUrl="https://a16zcrypto.substack.com/feed" htmlUrl="https://a16zcrypto.substack.com/" type="rss"/>
+      <outline text="Import AI" title="Import AI" xmlUrl="https://importai.substack.com/feed" htmlUrl="https://importai.substack.com/" type="rss"/>
+    </outline>
+    <outline text="COUNTRY">
+      <outline text="News – UKRI" title="News – UKRI" xmlUrl="https://www.ukri.org/news/feed/" htmlUrl="https://www.ukri.org/" type="rss"/>
+      <outline text="BBC News - UK" title="BBC News - UK" xmlUrl="https://feeds.bbci.co.uk/news/uk/rss.xml" htmlUrl="https://www.bbc.co.uk/news/uk" type="rss"/>
+      <outline text="China Daily" title="China Daily" xmlUrl="https://feedx.net/rss/chinadaily.xml" htmlUrl="http://www.chinadaily.com.cn/" type="rss"/>
+      <outline text="法国欧洲时报网" title="法国欧洲时报网" xmlUrl="http://rss.oushinet.com/rss?channelIds=780816982739263488%2C780816552760188928%2C780816743160619008%2C780816982739263488%2C780810936763293696" htmlUrl="https://www.oushinet.com/" type="rss"/>
+      <outline text="Entreprises" title="Entreprises" xmlUrl="https://services.lesechos.fr/rss/les-echos-entreprises.xml" htmlUrl="https://www.lesechos.fr/industrie-services" type="rss"/>
+      <outline text="Trump's Truth - Latest Posts" title="Trump's Truth - Latest Posts" xmlUrl="https://trumpstruth.org/feed" htmlUrl="https://trumpstruth.org/feed" type="rss"/>
+      <outline text="Gothamist" title="Gothamist" xmlUrl="https://gothamist.com/feed" htmlUrl="https://gothamist.com/" type="rss"/>
+    </outline>
+    <outline text="Meera Sodha | The Guardian" title="Meera Sodha | The Guardian" xmlUrl="https://www.theguardian.com/profile/meera-sodha/rss" htmlUrl="https://www.theguardian.com/profile/meera-sodha" type="rss"/>
+    <outline text="FINANCE">
+      <outline text="Financial TimesUK homepage" title="Financial TimesUK homepage" xmlUrl="https://www.ft.com/rss/home/uk" htmlUrl="https://www.ft.com/" type="rss"/>
+      <outline text="Harvard Business Review" title="Harvard Business Review" xmlUrl="https://feedx.net/rss/hbr.xml" htmlUrl="https://hbr.org/" type="rss"/>
+      <outline text="The Verge -  Cryptos" title="The Verge -  Cryptos" xmlUrl="https://www.theverge.com/rss/cryptocurrency/index.xml" htmlUrl="https://www.theverge.com/cryptocurrency" type="rss"/>
+      <outline text="Fortune | FORTUNE" title="Fortune | FORTUNE" xmlUrl="https://fortune.com/feed/fortune-feeds/?id=3230629" htmlUrl="https://fortune.com/" type="rss"/>
+      <outline text="All Topics - JPMorganChase Institute" title="All Topics - JPMorganChase Institute" xmlUrl="https://rsshub.app/jpmorganchase" htmlUrl="https://www.jpmorganchase.com/institute/all-topics" type="rss"/>
+      <outline text="IMF.ORG" title="IMF.ORG" xmlUrl="https://www.imf.org/en/rss-list/feed?category=WHATSNEW" htmlUrl="https://www.imf.org/external/rss/feeds.aspx?category=WHATSNEW" type="rss"/>
+      <outline text="UBS Global Research Pod Hub" title="UBS Global Research Pod Hub" xmlUrl="https://www.ubs.com/global/en/investment-bank/insights-and-data/global-research/_jcr_content/root/contentarea/mainpar/toplevelgrid_copy/col_1/responsivepodcast.rss20.xml?campID=RSS" htmlUrl="https://www.ubs.com/global/en/investment-bank/insights-and-data/global-research/_jcr_content/root/contentarea/mainpar/toplevelgrid_copy/col_1/responsivepodcast.rss20.xml?campID=RSS" type="rss"/>
+      <outline text="Central bankers' speeches - english" title="Central bankers' speeches - english" xmlUrl="https://www.bis.org/doclist/cbspeeches.rss?paging_length=15" htmlUrl="https://www.bis.org/doclist/cbspeeches.rss" type="rss"/>
+      <outline text="Goldman Sachs - YouTube" title="Goldman Sachs - YouTube" xmlUrl="https://rsshub.app/youtube/user/%40GoldmanSachs" htmlUrl="https://www.youtube.com/@GoldmanSachs" type="rss"/>
+      <outline text="HKET" title="HKET" xmlUrl="https://www.hket.com/rss/finance" htmlUrl="https://www.hket.com/" type="rss"/>
+      <outline text="IPE - Top stories" title="IPE - Top stories" xmlUrl="https://www.ipe.com/7070.rss" htmlUrl="https://www.ipe.com/" type="rss"/>
+      <outline text="S&amp;P Global Ratings(en)" title="S&amp;P Global Ratings(en)" xmlUrl="https://rsshub.app/spglobal/ratings/en" htmlUrl="https://www.spglobal.com/ratings/en/" type="rss"/>
+      <outline text=" Finans " title=" Finans " xmlUrl="https://borsen.dk/rss/finans" htmlUrl="https://borsen.dk/nyheder/finans/" type="rss"/>
+      <outline text="France Search Results" title="France Search Results" xmlUrl="https://lse.einnews.com/rss/PKn_rDPelCi8s6kW" htmlUrl="https://lse.einnews.com/search/France/?search%5B%5D=news&amp;search%5B%5D=press&amp;order=relevance&amp;age_h=2160&amp;headlines_only=mostly" type="rss"/>
+      <outline text="London Stock Exchange News" title="London Stock Exchange News" xmlUrl="https://lse.einnews.com/rss/jJlTRuOG4S88AMrt" htmlUrl="https://lse.einnews.com/news/london-stock-exchange-news" type="rss"/>
+      <outline text="Barron's Real Time Analysis" title="Barron's Real Time Analysis" xmlUrl="https://trades.jamespan.tech/columns/barrons-rta/feed.xml" htmlUrl="https://www.barrons.com/real-time" type="rss"/>
+      <outline text="All Content from Business Insider" title="All Content from Business Insider" xmlUrl="https://feeds.businessinsider.com/custom/all" htmlUrl="https://feeds.businessinsider.com/pull/bi/all?after=20&amp;limit=20&amp;toDate=2026-08-28T03%3A06%3A00Z" type="rss"/>
+    </outline>
+    <outline text="Japan">
+      <outline text="NHK日本国际传媒" title="NHK日本国际传媒" xmlUrl="https://feedx.net/rss/nhk.xml" htmlUrl="https://www3.nhk.or.jp/" type="rss"/>
+      <outline text="WirelessWire News" title="WirelessWire News" xmlUrl="https://wirelesswire.jp/feed/" htmlUrl="https://wirelesswire.jp/" type="rss"/>
+      <outline text="日本経済新聞" title="日本経済新聞" xmlUrl="https://rsshub.app/nikkei/index" htmlUrl="https://www.nikkei.com/" type="rss"/>
+      <outline text="日经中文网" title="日经中文网" xmlUrl="https://feedx.net/rss/nikkei.xml" htmlUrl="http://cn.nikkei.com/" type="rss"/>
+      <outline text="新闻 - 共同网" title="新闻 - 共同网" xmlUrl="https://china.kyodonews.net/list/feed/rss4news" htmlUrl="https://china.kyodonews.net/" type="rss"/>
+    </outline>
+    <outline text="WORLD">
+      <outline text="Deutsche Welle" title="Deutsche Welle" xmlUrl="https://rsshub.app/dw/rss/rss-en-all" htmlUrl="https://www.dw.com/english/?maca=en-rss-en-all-1573-rdf" type="rss"/>
+      <outline text="The Strait Times - SINGAPORE" title="The Strait Times - SINGAPORE" xmlUrl="https://rsshub.app/straitstimes" htmlUrl="https://www.straitstimes.com/singapore" type="rss"/>
+      <outline text="法广 - 时事与新闻直播 - RFI - 法国国际广播电台" title="法广 - 时事与新闻直播 - RFI - 法国国际广播电台" xmlUrl="https://feeds.feedburner.com/rfi/cn" htmlUrl="https://www.rfi.fr/cn/" type="rss"/>
+      <outline text="CNBC International: Top News And Analysis" title="CNBC International: Top News And Analysis" xmlUrl="https://www.cnbc.com/id/100727362/device/rss/rss.html" htmlUrl="https://www.cnbc.com/world-top-news/" type="rss"/>
+      <outline text="The Conversation: In-depth analysis, research, news and ideas from leading academics and researchers. – The Conversation" title="The Conversation: In-depth analysis, research, news and ideas from leading academics and researchers. – The Conversation" xmlUrl="https://theconversation.com/global/home-page.atom" htmlUrl="https://theconversation.com/" type="rss"/>
+      <outline text="Yahoo News - Latest News &amp; Headlines" title="Yahoo News - Latest News &amp; Headlines" xmlUrl="https://www.yahoo.com/news/rss/world/" htmlUrl="https://www.yahoo.com/news/world" type="rss"/>
+      <outline text="Le Monde.fr - Actualités et Infos en France et dans le monde" title="Le Monde.fr - Actualités et Infos en France et dans le monde" xmlUrl="https://www.lemonde.fr/en/rss/une.xml" htmlUrl="https://www.lemonde.fr/en/rss/une.xml" type="rss"/>
+      <outline text="Stimson Center" title="Stimson Center" xmlUrl="https://www.stimson.org/feed/" htmlUrl="https://www.stimson.org/" type="rss"/>
+    </outline>
+    <outline text="未分类">
+      <outline text="FreshRSS releases" title="FreshRSS releases" xmlUrl="https://github.com/FreshRSS/FreshRSS/releases.atom" htmlUrl="https://github.com/FreshRSS/FreshRSS/releases" type="rss"/>
+      <outline text="墨莫不語 / Vocus 作者" title="墨莫不語 / Vocus 作者" xmlUrl="https://feed.cqd.tw/vocus/user/moresaymore" htmlUrl="https://vocus.cc/user/@moresaymore" type="rss"/>
+      <outline text="Republik Magazin" title="Republik Magazin" xmlUrl="https://www.republik.ch/feed.xml" htmlUrl="https://www.republik.ch/" type="rss"/>
+      <outline text="Astral Codex Ten" title="Astral Codex Ten" xmlUrl="https://www.astralcodexten.com/feed" htmlUrl="https://www.astralcodexten.com/" type="rss"/>
+      <outline text="Digital Camera World" title="Digital Camera World" xmlUrl="https://rsshub.app/digitalcameraworld/news" htmlUrl="https://www.digitalcameraworld.com/" type="rss"/>
+      <outline text="PetaPixel" title="PetaPixel" xmlUrl="https://petapixel.com/feed/" htmlUrl="https://petapixel.com/" type="rss"/>
+    </outline>
+    <outline text="Hacker News: Best" title="Hacker News: Best" xmlUrl="https://hnrss.org/best" htmlUrl="https://news.ycombinator.com/best" type="rss"/>
+    <outline text="Twitter @Elon Musk" title="Twitter @Elon Musk" xmlUrl="https://rsshub.app/twitter/media/elonmusk" htmlUrl="https://x.com/elonmusk/media" type="rss"/>
+    <outline text="The Guardian UK" title="The Guardian UK" xmlUrl="https://www.theguardian.com/uk/rss" htmlUrl="https://www.theguardian.com/uk" type="rss"/>
+    <outline text="World news | The Guardian" title="World news | The Guardian" xmlUrl="https://www.theguardian.com/world/rss" htmlUrl="https://www.theguardian.com/world" type="rss"/>
+    <outline text="Marina Hyde | The Guardian" title="Marina Hyde | The Guardian" xmlUrl="https://www.theguardian.com/profile/marinahyde/rss" htmlUrl="https://www.theguardian.com/profile/marinahyde" type="rss"/>
+    <outline text="Hacker News" title="Hacker News" xmlUrl="https://rsshub.app/hackernews" htmlUrl="https://news.ycombinator.com/" type="rss"/>
+  </body>
+</opml>

@@ -1,0 +1,39 @@
+{
+  "cookies": {
+    "lemonde.fr": "/Users/cjw/Library/Application Support/RSSDailyEpub/cookies/lemonde.json"
+  },
+  "fulltext": {
+    "ext": {
+      "enabled": false,
+      "cmd": []
+    }
+  },
+  "browser": {
+    "enabled": true,
+    "port": 9334,
+    "user_data": "/Users/cjw/Library/Application Support/RSSDailyEpub/state/chrome_profile"
+  },
+  "rsshub_base": "",
+  "feed_aliases": [
+    {
+      "from": "https://rsshub.app/dw/rss/rss-en-all",
+      "to": "https://rss.dw.com/rdf/rss-en-all"
+    },
+    {
+      "from": "https://rsshub.app/hackernews",
+      "to": "https://news.ycombinator.com/rss"
+    },
+    {
+      "from": "https://rsshub.app/straitstimes",
+      "to": "https://www.straitstimes.com/news/singapore/rss.xml"
+    },
+    {
+      "from": "https://rsshub.app/digitalcameraworld/news",
+      "to": "https://www.digitalcameraworld.com/news/rss.xml"
+    },
+    {
+      "from": "https://rsshub.app/youtube/user/%40GoldmanSachs",
+      "to": "https://www.youtube.com/feeds/videos.xml?channel_id=UCyz6-taovlaOkPsPtK4KNEg"
+    }
+  ]
+}

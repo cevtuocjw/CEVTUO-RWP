@@ -1,0 +1,20 @@
+# ---- 构建产物与本地数据,一律不进仓库 ----
+__pycache__/
+*.pyc
+.venv/
+build/
+stage/
+app/
+out/
+state/
+output/
+books/
+logs/
+history/
+cookies/
+*.bak-*
+.DS_Store
+/CEVTUO-RWP2EPUB.dmg
+# 安装包走 Release 附件,不进 git(GitHub 超 50MB 会警告)
+/dist/*.dmg
+/dist/*.zip

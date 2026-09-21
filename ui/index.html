@@ -1,0 +1,1277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>CEVTUO-RWP2EPUB</title>
+<link rel="icon" href="/logo.png"/>
+<style>
+/* ==========================================================================
+   设计令牌 —— Liquid Glass
+   --glass (0..1) 由设置里的滑块控制,同时驱动模糊半径、透明度与高光强度
+   ========================================================================== */
+:root{
+  --glass: 0.62;
+  --blur: calc(6px + 34px * var(--glass));
+  --alpha: calc(0.34 + 0.52 * var(--glass));
+  --alpha-strong: calc(0.55 + 0.42 * var(--glass));
+  --radius-xl: 26px;
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+  --ease: cubic-bezier(.32,.72,0,1);
+}
+html[data-theme="light"]{
+  --bg1:#eef2f8; --bg2:#dfe7f3; --bg3:#f6f0f6; --bg4:#e6eef7;
+  --ink:#12161d; --ink-soft:#4a5261; --ink-faint:#79839a;
+  --panel: 255,255,255;
+  --line: rgba(255,255,255,.72);
+  --line-soft: rgba(120,135,160,.22);
+  --accent:#2f6feb; --accent-ink:#fff;
+  --ok:#0f7a3d; --warn:#a35a06; --err:#c03636;
+  --spec: rgba(255,255,255,.95);
+  --shadow: 0 10px 34px rgba(38,52,80,.13), 0 2px 8px rgba(38,52,80,.07);
+  --side-ink:#1b2029;
+  --side-ink-soft:#525c6d;
+}
+html[data-theme="dark"]{
+  --bg1:#0c1017; --bg2:#141b26; --bg3:#1b1524; --bg4:#0f1a22;
+  --ink:#eef2f8; --ink-soft:#a9b4c6; --ink-faint:#7b8698;
+  --panel: 22,28,38;
+  --line: rgba(255,255,255,.13);
+  --line-soft: rgba(255,255,255,.09);
+  --accent:#5b93ff; --accent-ink:#08111f;
+  --ok:#4ade80; --warn:#fbbf24; --err:#f87171;
+  --spec: rgba(255,255,255,.55);
+  --shadow: 0 14px 40px rgba(0,0,0,.5), 0 2px 10px rgba(0,0,0,.35);
+  --side-ink:#f2f6fc;
+  --side-ink-soft:#b6c1d3;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  font:14px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+  color:var(--ink); background:var(--bg1); overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+/* 背后的光效层:缓慢流动的几团色光,玻璃面板才会"透"出变化。
+   注意:深色模式下不要用接近底色的色块(等于看不见),也不要用大块白色
+   —— 之前那版就是一块 26vw 的白色 35% 铺在深底上,糊成一团灰雾。 */
+.aurora{position:fixed;inset:-20%;z-index:0;filter:blur(80px);opacity:calc(.42 + .30*var(--glass));}
+.aurora i{position:absolute;display:block;border-radius:50%}
+html[data-theme="light"] .aurora i{opacity:.85}
+html[data-theme="dark"]  .aurora i{opacity:.42}
+/* 冷蓝 / 紫 / 青,两侧各一团,中央留一条淡的做高光 */
+.aurora .a{width:44vw;height:44vw;left:-4%;top:-2%;background:#5b8cff;animation:drift1 34s var(--ease) infinite alternate}
+.aurora .b{width:38vw;height:38vw;right:-2%;top:6%;background:#a97bff;animation:drift2 41s var(--ease) infinite alternate}
+.aurora .c{width:48vw;height:48vw;left:16%;bottom:-20%;background:#37d4c4;animation:drift3 47s var(--ease) infinite alternate}
+.aurora .d{width:16vw;height:16vw;left:52%;top:26%;background:#ffffff;opacity:.18;animation:drift1 29s var(--ease) infinite alternate-reverse}
+html[data-theme="light"] .aurora{filter:blur(95px)}
+html[data-theme="light"] .aurora i{opacity:.34}
+@keyframes drift1{to{transform:translate3d(9vw,7vh,0) scale(1.14)}}
+@keyframes drift2{to{transform:translate3d(-11vw,9vh,0) scale(1.09)}}
+@keyframes drift3{to{transform:translate3d(7vw,-9vh,0) scale(1.16)}}
+@media (prefers-reduced-motion: reduce){.aurora i{animation:none}}
+
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* ---- 玻璃基类 ---- */
+.glass{
+  background:rgba(var(--panel),var(--alpha));
+  backdrop-filter:blur(var(--blur)) saturate(180%);
+  -webkit-backdrop-filter:blur(var(--blur)) saturate(180%);
+  border:1px solid var(--line);
+  box-shadow:var(--shadow), inset 0 1px 0 var(--spec), inset 0 -1px 0 rgba(255,255,255,.10);
+  border-radius:var(--radius-lg);
+}
+.glass-soft{
+  background:rgba(var(--panel),calc(var(--alpha) * .62));
+  backdrop-filter:blur(calc(var(--blur) * .7)) saturate(160%);
+  -webkit-backdrop-filter:blur(calc(var(--blur) * .7)) saturate(160%);
+  border:1px solid var(--line-soft);
+  border-radius:var(--radius-md);
+}
+
+.app{position:relative;z-index:1;display:flex;height:100vh;padding:12px;gap:12px}
+
+/* ===================== 左侧栏:银玻璃,从底板上"划"上来的一块 ===================== */
+.side{
+  width:228px;flex:none;display:flex;flex-direction:column;overflow:hidden;
+  border-radius:var(--radius-xl);
+  background:
+    linear-gradient(160deg,
+      rgba(255,255,255,calc(.62 + .3*var(--glass))) 0%,
+      rgba(228,234,244,calc(.48 + .3*var(--glass))) 42%,
+      rgba(198,208,224,calc(.42 + .3*var(--glass))) 100%);
+  backdrop-filter:blur(calc(var(--blur)*1.1)) saturate(190%);
+  -webkit-backdrop-filter:blur(calc(var(--blur)*1.1)) saturate(190%);
+  border:1px solid rgba(255,255,255,.62);
+  box-shadow:
+    0 18px 46px rgba(30,44,70,.22),
+    inset 0 1px 0 rgba(255,255,255,.98),
+    inset 0 -1px 0 rgba(255,255,255,.35),
+    inset 1px 0 0 rgba(255,255,255,.55);
+}
+html[data-theme="dark"] .side{
+  background:
+    linear-gradient(160deg,
+      rgba(214,224,240,calc(.20 + .28*var(--glass))) 0%,
+      rgba(150,166,190,calc(.14 + .24*var(--glass))) 45%,
+      rgba(88,102,126,calc(.16 + .24*var(--glass))) 100%);
+  border-color:rgba(255,255,255,.20);
+}
+/* 银色玻璃顶部的一道斜向高光 */
+.side::after{
+  content:"";position:absolute;inset:0;border-radius:var(--radius-xl);pointer-events:none;
+  background:linear-gradient(118deg,rgba(255,255,255,.55) 0%,rgba(255,255,255,0) 34%,
+    rgba(255,255,255,0) 66%,rgba(255,255,255,.30) 100%);
+  mix-blend-mode:screen;opacity:calc(.35 + .5*var(--glass));
+}
+.brand{position:relative;z-index:2;display:flex;align-items:center;gap:10px;
+  padding:18px 16px 14px}
+/* logo 本身已经是去底的透明图,不要再给它套圆角方块/描边边框。
+   阴影改用 drop-shadow —— 它沿着玫瑰的轮廓走,而不是围出一个方框。 */
+.brand img{width:42px;height:42px;flex:none;background:none;border:0;
+  box-shadow:none;filter:drop-shadow(0 2px 6px rgba(30,44,70,.30))}
+html[data-theme="dark"] .brand img{filter:drop-shadow(0 2px 7px rgba(0,0,0,.55))}
+.brand .tx{min-width:0}
+.brand b{display:block;font-size:14.5px;letter-spacing:.3px;color:var(--side-ink);
+  text-shadow:0 1px 0 rgba(255,255,255,.55);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.brand small{display:block;font-size:10.5px;color:var(--side-ink-soft);
+  text-shadow:0 1px 0 rgba(255,255,255,.4)}
+html[data-theme="dark"] .brand b{text-shadow:0 1px 2px rgba(0,0,0,.5)}
+html[data-theme="dark"] .brand small{text-shadow:0 1px 2px rgba(0,0,0,.5)}
+
+.nav{position:relative;z-index:2;padding:4px 10px;flex:1;overflow:auto}
+.nav button{
+  display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;margin-bottom:3px;
+  background:rgba(255,255,255,0);border:1px solid rgba(255,255,255,0);
+  border-radius:var(--radius-md);cursor:pointer;text-align:left;font-size:13.5px;
+  color:var(--side-ink);text-shadow:0 1px 0 rgba(255,255,255,.5);
+  transition:background .18s var(--ease),border-color .18s var(--ease),transform .18s var(--ease);
+}
+html[data-theme="dark"] .nav button{text-shadow:0 1px 2px rgba(0,0,0,.55)}
+.nav button:hover{background:rgba(255,255,255,.34);border-color:rgba(255,255,255,.5)}
+html[data-theme="dark"] .nav button:hover{background:rgba(255,255,255,.10)}
+.nav button.on{
+  background:linear-gradient(180deg,rgba(255,255,255,.72),rgba(255,255,255,.42));
+  border-color:rgba(255,255,255,.85);font-weight:600;
+  box-shadow:0 4px 14px rgba(30,44,70,.16), inset 0 1px 0 rgba(255,255,255,.95);
+}
+html[data-theme="dark"] .nav button.on{
+  background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.10));
+  border-color:rgba(255,255,255,.3);
+}
+.nav .ico{width:18px;text-align:center;opacity:.85;font-size:14px}
+.sidefoot{position:relative;z-index:2;padding:12px 16px;font-size:10.5px;
+  color:var(--side-ink-soft);border-top:1px solid rgba(255,255,255,.4)}
+
+/* ===================== 主区 ===================== */
+.main{flex:1;display:flex;flex-direction:column;min-width:0;gap:12px}
+.top{flex:none;display:flex;align-items:center;gap:10px;padding:12px 18px;
+  border-radius:var(--radius-lg)}
+.top h1{font-size:15.5px;margin:0;font-weight:650;flex:1;min-width:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.body{flex:1;overflow:auto;padding:2px 2px 70px}
+
+.chip{font-size:11.5px;padding:4px 11px;border-radius:999px;white-space:nowrap;
+  background:rgba(var(--panel),.5);border:1px solid var(--line-soft);color:var(--ink-soft);
+  backdrop-filter:blur(10px)}
+.chip.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 34%,transparent)}
+.chip.warn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 34%,transparent)}
+.chip.err{color:var(--err);border-color:color-mix(in srgb,var(--err) 34%,transparent)}
+.chip.click{cursor:pointer}
+.chip.click:hover{background:rgba(var(--panel),.8)}
+
+/* ---- 控件 ---- */
+.btn{padding:7px 14px;border-radius:var(--radius-md);cursor:pointer;white-space:nowrap;
+  background:rgba(var(--panel),calc(var(--alpha)*.7));border:1px solid var(--line-soft);
+  backdrop-filter:blur(12px);transition:transform .16s var(--ease),background .16s var(--ease);
+  box-shadow:0 2px 8px rgba(30,44,70,.06), inset 0 1px 0 var(--spec)}
+.btn:hover{background:rgba(var(--panel),calc(var(--alpha)*.95))}
+.btn:active{transform:scale(.975)}
+.btn.primary{background:linear-gradient(180deg,var(--accent),color-mix(in srgb,var(--accent) 82%,#000));
+  color:var(--accent-ink);border-color:transparent;
+  box-shadow:0 6px 18px color-mix(in srgb,var(--accent) 34%,transparent), inset 0 1px 0 rgba(255,255,255,.35)}
+.btn.danger{color:var(--err);border-color:color-mix(in srgb,var(--err) 30%,transparent)}
+.btn.sm{padding:4px 10px;font-size:12px;border-radius:var(--radius-sm)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.row{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.grow{flex:1;min-width:0}
+.card{padding:16px 18px;margin-bottom:14px;border-radius:var(--radius-lg)}
+.card h3{margin:0 0 12px;font-size:14px;font-weight:640}
+.muted{color:var(--ink-faint);font-size:12.5px}
+.empty{color:var(--ink-faint);text-align:center;padding:44px 0}
+input[type=text],input[type=url],input[type=number],select,textarea{
+  padding:8px 11px;border-radius:var(--radius-md);width:100%;
+  background:rgba(var(--panel),calc(var(--alpha)*.68));
+  border:1px solid var(--line-soft);backdrop-filter:blur(12px);outline:none;
+  transition:border-color .16s var(--ease),box-shadow .16s var(--ease)}
+input:focus,select:focus,textarea:focus{
+  border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent)}
+textarea{resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
+label.fld{display:block;margin-bottom:11px}
+label.fld>span{display:block;font-size:12px;color:var(--ink-faint);margin-bottom:5px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:13px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:8px 9px;border-bottom:1px solid var(--line-soft);vertical-align:middle}
+th{color:var(--ink-faint);font-weight:600;font-size:12px}
+tr:hover td{background:rgba(var(--panel),.32)}
+.tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;
+  background:rgba(var(--panel),.6);border:1px solid var(--line-soft);color:var(--ink-faint)}
+.tag.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 30%,transparent)}
+.tag.warn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 30%,transparent)}
+.tag.err{color:var(--err);border-color:color-mix(in srgb,var(--err) 30%,transparent)}
+
+.ccard{padding:15px 16px;cursor:pointer;border-radius:var(--radius-lg);
+  transition:transform .18s var(--ease),box-shadow .18s var(--ease)}
+.ccard:hover{transform:translateY(-3px)}
+.ccard .t{font-weight:600;margin-bottom:5px;word-break:break-word}
+.ccard .m{font-size:12px;color:var(--ink-faint)}
+.folder{padding:15px 16px;cursor:pointer;border-radius:var(--radius-lg);
+  transition:transform .18s var(--ease)}
+.folder:hover{transform:translateY(-3px)}
+.folder .t{font-weight:600;display:flex;align-items:center;gap:9px}
+
+.ch{display:flex;align-items:center;gap:11px;padding:11px 13px;margin-bottom:7px;
+  border-radius:var(--radius-md);background:rgba(var(--panel),calc(var(--alpha)*.5));
+  border:1px solid var(--line-soft);backdrop-filter:blur(10px)}
+.ch:hover{border-color:color-mix(in srgb,var(--accent) 32%,transparent)}
+.ch .no{width:26px;flex:none;text-align:center;color:var(--ink-faint);font-size:12px}
+.ch .ti{flex:1;min-width:0;cursor:pointer}
+.ch .ti b{font-weight:520;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ch .ti small{color:var(--ink-faint);font-size:11.5px;display:block;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+
+/* ---- 弹窗 ---- */
+.mask{position:fixed;inset:0;background:rgba(12,18,28,.34);display:flex;align-items:center;
+  justify-content:center;z-index:50;padding:26px;backdrop-filter:blur(3px)}
+.modal{width:100%;max-width:920px;max-height:92vh;display:flex;flex-direction:column;
+  overflow:hidden;border-radius:var(--radius-xl);
+  background:rgba(var(--panel),var(--alpha-strong));
+  backdrop-filter:blur(calc(var(--blur)*1.15)) saturate(190%);
+  -webkit-backdrop-filter:blur(calc(var(--blur)*1.15)) saturate(190%);
+  border:1px solid var(--line);
+  box-shadow:0 30px 80px rgba(10,18,32,.4), inset 0 1px 0 var(--spec);
+  animation:pop .26s var(--ease)}
+.modal.wide{max-width:1200px}
+@keyframes pop{from{opacity:0;transform:scale(.97) translateY(8px)}}
+.modal .hd{padding:15px 18px;border-bottom:1px solid var(--line-soft);display:flex;
+  align-items:center;gap:10px}
+.modal .hd h3{margin:0;font-size:15px;flex:1;min-width:0;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.modal .bd{padding:18px;overflow:auto;flex:1}
+.modal .ft{padding:14px 18px;border-top:1px solid var(--line-soft);display:flex;
+  gap:9px;justify-content:flex-end;align-items:center}
+.x{border:0;background:none;font-size:20px;line-height:1;cursor:pointer;
+  color:var(--ink-faint);padding:2px 7px;border-radius:8px}
+.x:hover{color:var(--ink);background:rgba(var(--panel),.6)}
+
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line-soft);margin-bottom:16px;flex-wrap:wrap}
+.tabs button{border:0;background:none;padding:9px 14px;cursor:pointer;color:var(--ink-faint);
+  border-bottom:2px solid transparent;margin-bottom:-1px;border-radius:8px 8px 0 0}
+.tabs button.on{color:var(--accent);border-bottom-color:var(--accent);font-weight:640}
+
+.prog{height:8px;border-radius:999px;overflow:hidden;background:rgba(var(--panel),.55);
+  border:1px solid var(--line-soft)}
+.prog i{display:block;height:100%;width:0;border-radius:999px;
+  background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#fff));
+  transition:width .35s var(--ease)}
+.logbox{border-radius:var(--radius-md);padding:12px 14px;font-size:11.5px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;max-height:250px;overflow:auto;
+  white-space:pre-wrap;word-break:break-all;
+  background:rgba(10,14,20,.86);color:#cfd8e6;border:1px solid rgba(255,255,255,.10)}
+html[data-theme="light"] .logbox{background:rgba(24,30,40,.9)}
+.chk{display:flex;align-items:center;gap:7px;font-size:13px;padding:3px 0;cursor:pointer}
+.chk input{width:auto}
+.preview{padding:18px 22px;max-height:58vh;overflow:auto;line-height:1.78;
+  border-radius:var(--radius-md);background:rgba(var(--panel),calc(var(--alpha)*.66));
+  border:1px solid var(--line-soft)}
+.preview img{max-width:100%;height:auto}
+.editarea{padding:18px 22px;min-height:52vh;max-height:58vh;overflow:auto;line-height:1.78;
+  outline:none;border-radius:var(--radius-md);background:rgba(var(--panel),calc(var(--alpha)*.66));
+  border:1px solid var(--line-soft)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:7px 16px;font-size:13px}
+.kv b{color:var(--ink-faint);font-weight:500}
+.spinner{display:inline-block;width:12px;height:12px;border:2px solid var(--line-soft);
+  border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);z-index:99;
+  padding:11px 20px;border-radius:var(--radius-lg);font-size:13px;max-width:80vw;
+  background:rgba(var(--panel),var(--alpha-strong));backdrop-filter:blur(var(--blur));
+  border:1px solid var(--line);box-shadow:var(--shadow);animation:pop .22s var(--ease)}
+code{background:rgba(var(--panel),.6);padding:2px 6px;border-radius:6px;font-size:12px;
+  border:1px solid var(--line-soft)}
+
+/* ---- 滑杆 ---- */
+.slider{-webkit-appearance:none;appearance:none;width:100%;height:6px;border-radius:999px;
+  background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 25%,transparent));
+  outline:none;padding:0;border:0}
+.slider::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;
+  background:linear-gradient(180deg,#fff,#dfe6f0);cursor:pointer;
+  box-shadow:0 3px 10px rgba(20,35,60,.35), inset 0 1px 0 #fff;
+  border:1px solid rgba(255,255,255,.9)}
+/* ---- 分段控件 ---- */
+.seg{display:inline-flex;padding:3px;gap:3px;border-radius:var(--radius-md);
+  background:rgba(var(--panel),.5);border:1px solid var(--line-soft)}
+.seg button{border:0;background:none;padding:5px 12px;border-radius:calc(var(--radius-md) - 4px);
+  cursor:pointer;font-size:12.5px;color:var(--ink-soft)}
+.seg button.on{background:rgba(var(--panel),.95);font-weight:600;color:var(--ink);
+  box-shadow:0 2px 6px rgba(20,35,60,.14)}
+html[data-theme="dark"] .seg button.on{background:rgba(255,255,255,.16)}
+</style>
+</head>
+<body>
+<div class="aurora"><i class="a"></i><i class="b"></i><i class="c"></i><i class="d"></i></div>
+
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <img src="/logo-mark.png" alt=""/>
+      <div class="tx"><b>CEVTUO-RWP2EPUB</b><small data-i18n="brand.sub">网页 / RSS → EPUB 工作台</small></div>
+    </div>
+    <nav class="nav" id="nav">
+      <button data-v="collections" class="on"><span class="ico">▦</span><span data-i18n="nav.collections">CEVTUO合集坊</span></button>
+      <button data-v="rss"><span class="ico">≋</span><span data-i18n="nav.rss">Rssdailyepub</span></button>
+      <button data-v="library"><span class="ico">▤</span><span data-i18n="nav.library">rssdailyepub书库</span></button>
+      <button data-v="settings"><span class="ico">⚙</span><span data-i18n="nav.settings">设置</span></button>
+    </nav>
+    <div class="sidefoot" id="sidefoot">—</div>
+  </aside>
+
+  <div class="main">
+    <header class="top glass">
+      <h1 id="title">—</h1>
+      <span class="chip" id="chipChrome">…</span>
+      <span class="chip" id="chipJob" style="display:none"></span>
+    </header>
+    <div class="body" id="view"></div>
+  </div>
+</div>
+<div id="modalHost"></div>
+
+<script>
+/* ============================== i18n ============================== */
+const I18N = {
+  zh:{
+    "brand.sub":"网页 / RSS → EPUB 工作台",
+    "nav.collections":"CEVTUO合集坊","nav.rss":"Rssdailyepub",
+    "nav.library":"rssdailyepub书库","nav.settings":"设置",
+    "common.ok":"确定","common.close":"关闭","common.save":"保存","common.cancel":"取消",
+    "common.delete":"删除","common.edit":"编辑","common.open":"打开","common.reveal":"在访达显示",
+    "common.import":"导入内容","common.export":"导出 EPUB","common.chapters":"章节管理",
+    "common.blank":"＋ 空白页","common.fromUrl":"＋ 从网址添加","common.viewEdit":"查看 / 编辑",
+    "common.back":"返回","common.refresh":"刷新","common.new":"新建",
+    "coll.title":"CEVTUO合集坊","coll.new":"＋ 新建合集","coll.empty":"还没有合集。新建一个,然后导入内容。",
+    "coll.name":"合集名称(会成为书名)","coll.author":"作者","coll.lang":"语言代码",
+    "coll.saveMeta":"保存信息","coll.cover":"上传封面","coll.del":"删除合集",
+    "coll.delConfirm":"删除这个合集(含所有章节)?已导出的 epub 也会删掉。",
+    "coll.ready":"篇有正文","coll.chapters":"章",
+    "ch.empty":"还没有章节。点「导入内容」批量导入,或用「空白页」手动写。",
+    "ch.delConfirm":"删除这一章?","ch.title":"标题","ch.preview":"预览",
+    "ch.editBody":"编辑正文","ch.html":"HTML 源码","ch.openSrc":"打开原网页",
+    "imp.title":"导入内容","imp.urls":"多个网址","imp.website":"网站内链接",
+    "imp.rss":"RSS 订阅","imp.md":"Markdown",
+    "imp.urlsHint":"网址(一行一个,支持 archive.today / 已解锁的付费墙页面)",
+    "imp.onePerLine":"每行一个链接",
+    "imp.useChrome":"用真实 Chrome 渲染",
+    "imp.useChromeNote":"— archive.today、Bypass Paywalls Clean 解锁的页面必须勾选",
+    "imp.start":"开始导入","imp.loadLinks":"读取链接","imp.loadItems":"读取条目",
+    "imp.selectAll":"全选","imp.importSel":"导入勾选的","imp.siteUrl":"网站地址 / sitemap.xml",
+    "imp.src":"来源","imp.srcLinks":"页面里的链接","imp.srcSitemap":"sitemap.xml",
+    "imp.sameDomain":"只看同域名链接","imp.feedUrl":"RSS / Atom 地址",
+    "imp.mdHint":"粘贴 Markdown(用 # 一级标题 分篇,每篇成为一个章节)",
+    "imp.rssFull":"RSS 自带全文",
+    "exp.title":"导出 EPUB","exp.embed":"下载并内嵌图片(Kindle 离线可读)",
+    "exp.noPreface":"不生成前言 / 目录页","exp.start":"开始导出",
+    "exp.note":"导出后可在书库里找到。本程序对导出页数没有限制。",
+    "rss.gen":"一键生成","rss.recent":"收录最近","rss.days":"天","rss.perFeed":"每源最多",
+    "rss.mail":"生成合并本并邮件推送","rss.force":"强制重刷全部","rss.go":"一键生成",
+    "rss.which":"做哪些分类","rss.whichNote":"不勾 = 全部分类","rss.all":"全选","rss.none":"清空",
+    "rss.sched":"定时处理","rss.freq":"频率","rss.daily":"每天","rss.every2":"每隔两天",
+    "rss.every3":"每隔三天","rss.off":"取消定时","rss.time":"时间","rss.saveSched":"保存定时设置",
+    "rss.runNow":"现在按设置跑一次","rss.jobState":"任务状态","rss.loaded":"已装载",
+    "rss.notLoaded":"未装载","rss.lastRun":"上次执行","rss.nextRun":"下次执行",
+    "rss.oldJob":"检测到旧的 rssdaily 定时任务,保存本设置会自动接管",
+    "rss.schedNote":"系统每天在设定时间唤醒一次,「每隔两天 / 三天」由程序判断是否真的生成;收录范围按上面的设置。",
+    "rss.sources":"RSS 源管理","rss.addFeed":"＋ 添加源","rss.addCat":"＋ 新建分类",
+    "rss.importOpml":"导入 OPML","rss.sourcesCount":"个源","rss.cats":"个分类",
+    "rss.noSources":"还没有订阅源。点「添加源」或「导入 OPML」。",
+    "rss.feedName":"名称","rss.feedUrl":"RSS 地址","rss.feedCat":"分类",
+    "rss.feedCatNote":"填一个不存在的名字会自动新建分类",
+    "rss.rename":"重命名","rss.delCat":"删除分类",
+    "rss.delCatConfirm":"删除分类?(里面的源会移到「未分类」)",
+    "lib.collections":"合集电子书","lib.collectionsNote":"由 CEVTUO合集坊 导出的书",
+    "lib.rss":"Rssdailyepub 每日书","lib.rssNote":"按日期成文件夹,点进去看当天的每一本",
+    "lib.noColl":"还没有导出过合集。去 CEVTUO合集坊 里点导出。",
+    "lib.noRss":"还没有生成过每日书。去 Rssdailyepub 点一键生成。",
+    "set.browser":"浏览器渲染(全文获取的关键)",
+    "set.browserNote":"为了拿到 archive.today、以及靠 Bypass Paywalls Clean 解锁的页面全文,程序会把你的 Chrome profile 复制一份,用它启动一个带调试口的 Chrome 来渲染页面。你的日常 Chrome 不受影响。",
+    "set.port":"调试端口","set.ver":"浏览器版本","set.profile":"profile 副本",
+    "set.ready":"已就绪","set.notReady":"尚未复制","set.connected":"已连接","set.disconnected":"未启动",
+    "set.startChrome":"启动 / 连接 Chrome","set.sync":"重新同步登录态","set.test":"测试渲染一个网址",
+    "set.syncNote":"复制过去的登录态是一份快照。若某站提示未登录,点「重新同步登录态」。",
+    "set.library":"书库位置","set.libraryNote":"所有生成的书(RSS 日报与合集导出)都放在这里。改位置时,已生成的书会自动一起搬过去。",
+    "set.pick":"选择文件夹","set.currentFmt":"当前","set.pathManual":"也可以直接输入路径",
+    "set.moved":"已移动 {n} 项","set.appearance":"外观","set.theme":"主题",
+    "set.light":"浅色","set.dark":"深色","set.auto":"跟随系统","set.lang":"语言",
+    "set.glass":"玻璃质感","set.glassNote":"拖动调节毛玻璃的强度",
+    "set.about":"关于","set.app":"应用","set.limit":"导出上限",
+    "set.limitNote":"无限制 — 本程序不设 10 页之类的导出上限",
+    "set.dataDir":"数据与日志",
+    "job.title":"任务进度","job.running":"进行中","job.done":"✓ 完成","job.error":"✗ 出错",
+    "job.cancelled":"已取消","job.queued":"排队中","job.cancel":"取消","job.cancelledReq":"已请求取消",
+    "job.made":"生成完成:","job.nothing":"这次没有新内容",
+    "msg.pasted":"每行一个链接,已识别 {n} 条",
+    "footer.ready":"就绪","footer.chrome":"Chrome 渲染就绪",
+  },
+  en:{
+    "brand.sub":"Web / RSS → EPUB workbench",
+    "nav.collections":"CEVTUO Studio","nav.rss":"Rssdailyepub",
+    "nav.library":"rssdailyepub Library","nav.settings":"Settings",
+    "common.ok":"OK","common.close":"Close","common.save":"Save","common.cancel":"Cancel",
+    "common.delete":"Delete","common.edit":"Edit","common.open":"Open","common.reveal":"Reveal in Finder",
+    "common.import":"Import","common.export":"Export EPUB","common.chapters":"Chapters",
+    "common.blank":"+ Blank page","common.fromUrl":"+ From URL","common.viewEdit":"View / Edit",
+    "common.back":"Back","common.refresh":"Refresh","common.new":"New",
+    "coll.title":"CEVTUO Studio","coll.new":"+ New collection","coll.empty":"No collections yet. Create one, then import content.",
+    "coll.name":"Collection name (becomes the book title)","coll.author":"Author","coll.lang":"Language code",
+    "coll.saveMeta":"Save details","coll.cover":"Upload cover","coll.del":"Delete collection",
+    "coll.delConfirm":"Delete this collection (and all its chapters)? Exported EPUBs will be removed too.",
+    "coll.ready":"with content","coll.chapters":"ch.",
+    "ch.empty":"No chapters yet. Use Import, or add a blank page.",
+    "ch.delConfirm":"Delete this chapter?","ch.title":"Title","ch.preview":"Preview",
+    "ch.editBody":"Edit body","ch.html":"HTML source","ch.openSrc":"Open source page",
+    "imp.title":"Import content","imp.urls":"Multiple URLs","imp.website":"Links in website",
+    "imp.rss":"RSS feed","imp.md":"Markdown",
+    "imp.urlsHint":"URLs (one per line; archive.today and unlocked paywalled pages work)",
+    "imp.onePerLine":"One link per line",
+    "imp.useChrome":"Render with your real Chrome",
+    "imp.useChromeNote":"— required for archive.today and Bypass Paywalls Clean pages",
+    "imp.start":"Start import","imp.loadLinks":"Load links","imp.loadItems":"Load items",
+    "imp.selectAll":"Select all","imp.importSel":"Import selected","imp.siteUrl":"Site URL / sitemap.xml",
+    "imp.src":"Source","imp.srcLinks":"Links on the page","imp.srcSitemap":"sitemap.xml",
+    "imp.sameDomain":"Same domain only","imp.feedUrl":"RSS / Atom URL",
+    "imp.mdHint":"Paste Markdown (split articles with # H1 headings)",
+    "imp.rssFull":"full text in feed",
+    "exp.title":"Export EPUB","exp.embed":"Download and embed images (offline reading on Kindle)",
+    "exp.noPreface":"Skip preface / TOC page","exp.start":"Export",
+    "exp.note":"Exported books appear in the Library. There is no page limit.",
+    "rss.gen":"One-click build","rss.recent":"Include last","rss.days":"days","rss.perFeed":"Max per feed",
+    "rss.mail":"Also build a combined book and email it","rss.force":"Force rebuild all","rss.go":"Build now",
+    "rss.which":"Which categories","rss.whichNote":"none checked = all","rss.all":"All","rss.none":"Clear",
+    "rss.sched":"Schedule","rss.freq":"Frequency","rss.daily":"Daily","rss.every2":"Every 2 days",
+    "rss.every3":"Every 3 days","rss.off":"Off","rss.time":"Time","rss.saveSched":"Save schedule",
+    "rss.runNow":"Run once now","rss.jobState":"Job status","rss.loaded":"loaded",
+    "rss.notLoaded":"not loaded","rss.lastRun":"Last run","rss.nextRun":"Next run",
+    "rss.oldJob":"Legacy rssdaily job detected — saving will take it over automatically",
+    "rss.schedNote":"launchd wakes the app once a day; the every-2/3-days interval is enforced by the app itself. Content range follows the settings above.",
+    "rss.sources":"RSS sources","rss.addFeed":"+ Add feed","rss.addCat":"+ New category",
+    "rss.importOpml":"Import OPML","rss.sourcesCount":"feeds","rss.cats":"categories",
+    "rss.noSources":"No feeds yet. Add one or import an OPML file.",
+    "rss.feedName":"Name","rss.feedUrl":"RSS URL","rss.feedCat":"Category",
+    "rss.feedCatNote":"A new name creates a new category",
+    "rss.rename":"Rename","rss.delCat":"Delete category",
+    "rss.delCatConfirm":"Delete this category? Its feeds move to Uncategorized.",
+    "lib.collections":"Collection books","lib.collectionsNote":"exported from CEVTUO Studio",
+    "lib.rss":"Rssdailyepub daily books","lib.rssNote":"grouped by date — open a folder to see each book",
+    "lib.noColl":"No exported collections yet. Export one from CEVTUO Studio.",
+    "lib.noRss":"No daily books yet. Hit Build now in Rssdailyepub.",
+    "set.browser":"Browser rendering (key to full text)",
+    "set.browserNote":"To get full text from archive.today and pages unlocked by Bypass Paywalls Clean, the app keeps a copy of your Chrome profile and drives a Chrome with a debug port. Your everyday Chrome is untouched.",
+    "set.port":"Debug port","set.ver":"Browser","set.profile":"Profile copy",
+    "set.ready":"ready","set.notReady":"not copied","set.connected":"connected","set.disconnected":"not running",
+    "set.startChrome":"Start / connect Chrome","set.sync":"Re-sync session","set.test":"Test render a URL",
+    "set.syncNote":"The copied session is a snapshot. If a site asks you to log in, click Re-sync session.",
+    "set.library":"Library location","set.libraryNote":"All generated books (RSS dailies and collection exports) live here. Changing it moves existing books along.",
+    "set.pick":"Choose folder","set.currentFmt":"Current","set.pathManual":"Or type a path",
+    "set.moved":"Moved {n} item(s)","set.appearance":"Appearance","set.theme":"Theme",
+    "set.light":"Light","set.dark":"Dark","set.auto":"System","set.lang":"Language",
+    "set.glass":"Glass intensity","set.glassNote":"Drag to adjust the frosted-glass strength",
+    "set.about":"About","set.app":"App","set.limit":"Export limit",
+    "set.limitNote":"none — no 10-page cap",
+    "set.dataDir":"Data & logs",
+    "job.title":"Task progress","job.running":"Running","job.done":"✓ Done","job.error":"✗ Failed",
+    "job.cancelled":"Cancelled","job.queued":"Queued","job.cancel":"Cancel","job.cancelledReq":"Cancel requested",
+    "job.made":"Finished:","job.nothing":"nothing new this time",
+    "msg.pasted":"One link per line — {n} detected",
+    "footer.ready":"Ready","footer.chrome":"Chrome rendering ready",
+  }
+};
+let LANG = (navigator.language || "zh").toLowerCase().startsWith("zh") ? "zh" : "en";
+const t = k => (I18N[LANG] && I18N[LANG][k]) || (I18N.zh[k]) || k;
+function applyStaticI18n(){
+  document.documentElement.lang = LANG === "zh" ? "zh-CN" : "en";
+  document.querySelectorAll("[data-i18n]").forEach(el=>{
+    const k = el.dataset.i18n; if(I18N[LANG][k]) el.textContent = I18N[LANG][k];
+  });
+}
+
+/* ============================== 基础 ============================== */
+const $ = (s,r=document)=>r.querySelector(s);
+const $$ = (s,r=document)=>Array.from(r.querySelectorAll(s));
+const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function api(path,opt){
+  const r = await fetch(path, Object.assign({headers:{'Content-Type':'application/json'}},opt));
+  const txt = await r.text();
+  let j; try{ j = txt? JSON.parse(txt):{}; }catch(e){ throw new Error('Bad JSON: '+txt.slice(0,180)); }
+  if(!r.ok && j.err) throw new Error(j.err);
+  return j;
+}
+const get = p => api(p);
+const post = (p,b) => api(p,{method:'POST',body:JSON.stringify(b||{})});
+function toast(msg,ms=2800){
+  const d=document.createElement('div'); d.className='toast'; d.textContent=msg;
+  document.body.appendChild(d); setTimeout(()=>d.remove(),ms);
+}
+const fmtSize = n => n>1048576? (n/1048576).toFixed(1)+' MB' : Math.round(n/1024)+' KB';
+
+/* ============================== 全局 ============================== */
+const S = { state:null, ui:{theme:'auto',glass:0.62,lang:null} };
+
+function applyTheme(){
+  let th = S.ui.theme || 'auto';
+  if(th === 'auto') th = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  document.documentElement.dataset.theme = th;
+}
+function applyGlass(v){ document.documentElement.style.setProperty('--glass', String(v)); }
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', ()=>{ if(S.ui.theme==='auto') applyTheme(); });
+
+async function refreshState(){
+  try{
+    const s = await get('/api/state'); S.state = s;
+    const ui = s.settings.ui || {};
+    let changed = false;
+    if(ui.theme && ui.theme !== S.ui.theme){ S.ui.theme = ui.theme; applyTheme(); }
+    if(typeof ui.glass === 'number' && ui.glass !== S.ui.glass){ S.ui.glass = ui.glass; applyGlass(ui.glass); }
+    if(ui.lang && ui.lang !== (S.ui.lang||'')){ S.ui.lang = ui.lang; if(I18N[ui.lang]){ LANG = ui.lang; applyStaticI18n(); changed = true; } }
+    const c = $('#chipChrome');
+    c.className = 'chip click ' + (s.capture?.chrome_running ? 'ok' : 'warn');
+    c.textContent = s.capture?.chrome_running ? `Chrome :${s.capture.port}` : 'Chrome —';
+    c.title = t('set.browser');
+    const running = (s.jobs||[]).find(j=>j.status==='running'||j.status==='queued');
+    const cj = $('#chipJob');
+    if(running){
+      cj.style.display=''; cj.className='chip ok';
+      cj.innerHTML = '<span class="spinner"></span> '+esc(running.title)+' '+(running.total?running.done+'/'+running.total:'');
+      cj.onclick = ()=>openJob(running.id);
+    } else cj.style.display='none';
+    $('#sidefoot').textContent = s.capture?.chrome_running ? t('footer.chrome') : t('footer.ready');
+    if(changed) setView(S.view, S.viewArg);
+  }catch(e){}
+}
+$('#chipChrome').onclick = async ()=>{
+  toast('…');
+  try{ const r = await post('/api/capture/ensure',{});
+       toast(r.ok? 'Chrome OK' : ('Chrome: '+(r.err||'?'))); }
+  catch(e){ toast('Chrome: '+e.message); }
+  refreshState();
+};
+
+function setView(v,arg){
+  S.view=v; S.viewArg=arg;
+  $$('#nav button').forEach(b=>b.classList.toggle('on', b.dataset.v===v || (v==='collection'&&b.dataset.v==='collections')));
+  ({collections:renderCollections, collection:()=>renderCollection(arg),
+    rss:renderRss, library:renderLibrary, settings:renderSettings}[v]||renderCollections)();
+}
+$$('#nav button').forEach(b=>b.onclick=()=>setView(b.dataset.v));
+
+/* ========================= CEVTUO合集坊 ========================= */
+async function renderCollections(){
+  $('#title').textContent = t('coll.title');
+  const r = await get('/api/collections');
+  $('#view').innerHTML = `
+    <div class="row" style="margin-bottom:16px">
+      <button class="btn primary" id="newColl">${t('coll.new')}</button>
+      <span class="muted">${LANG==='zh'?'一个合集 = 一本电子书;每篇文章 = 一个章节':'One collection = one book; each article = a chapter'}</span>
+    </div>
+    <div class="grid" id="cgrid"></div>`;
+  $('#newColl').onclick = newCollectionModal;
+  const g = $('#cgrid');
+  if(!r.collections.length){ g.innerHTML = `<div class="empty" style="grid-column:1/-1">${t('coll.empty')}</div>`; return; }
+  g.innerHTML = r.collections.map(c=>`<div class="ccard glass" data-id="${c.id}">
+      <div class="t">${esc(c.title)}</div>
+      <div class="m">${c.ready}/${c.count} ${t('coll.ready')} · ${esc(c.language_code||'')}</div>
+    </div>`).join('');
+  $$('.ccard',g).forEach(el=>el.onclick=()=>setView('collection', el.dataset.id));
+}
+
+function newCollectionModal(){
+  modal({title:t('coll.new'),
+    body:`<label class="fld"><span>${t('coll.name')}</span><input type="text" id="ncTitle"/></label>
+          <label class="fld"><span>${t('coll.author')}</span><input type="text" id="ncAuthor"/></label>
+          <label class="fld"><span>${t('coll.lang')}</span><select id="ncLang">
+            <option value="zh-CN">zh-CN</option><option value="zh-TW">zh-TW</option>
+            <option value="en">en</option><option value="ja">ja</option></select></label>`,
+    okText:t('common.ok'),
+    onOk: async ()=>{
+      const v=$('#ncTitle').value.trim(); if(!v){toast('—');return false;}
+      const c = await post('/api/collection/create',{title:v,author:$('#ncAuthor').value.trim(),language_code:$('#ncLang').value});
+      closeModal(); setView('collection', c.id);
+    }});
+}
+
+async function renderCollection(cid){
+  const c = await get('/api/collection?id='+encodeURIComponent(cid));
+  $('#title').textContent = c.title;
+  const langs=['zh-CN','zh-TW','en','ja'];
+  $('#view').innerHTML = `
+    <div class="card glass">
+      <div class="row" style="align-items:flex-start">
+        <div style="width:80px;height:110px;flex:none;border-radius:var(--radius-md);
+          border:1px solid var(--line-soft);background:rgba(var(--panel),.5) center/cover no-repeat;
+          ${c.cover?`background-image:url('file://${esc(c.cover)}')`:''}"></div>
+        <div class="grow">
+          <div class="row" style="margin-bottom:9px">
+            <input type="text" id="cTitle" value="${esc(c.title)}" style="max-width:330px"/>
+            <input type="text" id="cAuthor" value="${esc(c.author||'')}" placeholder="${t('coll.author')}" style="max-width:170px"/>
+            <select id="cLang" style="width:auto">${langs.map(l=>`<option ${l===c.language_code?'selected':''}>${l}</option>`).join('')}</select>
+          </div>
+          <div class="row">
+            <button class="btn" id="saveMeta">${t('coll.saveMeta')}</button>
+            <label class="btn" style="cursor:pointer">${t('coll.cover')}<input type="file" id="coverFile" accept="image/*" style="display:none"/></label>
+            <button class="btn primary" id="btnImport">${t('common.import')}</button>
+            <button class="btn" id="btnExport">${t('common.export')}</button>
+            <button class="btn danger" id="btnDelColl">${t('coll.del')}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card glass">
+      <div class="row" style="margin-bottom:10px">
+        <h3 style="margin:0;flex:1">${t('common.chapters')} <span class="muted" id="chCount"></span></h3>
+        <button class="btn sm" id="addBlank">${t('common.blank')}</button>
+        <button class="btn sm" id="addByUrl">${t('common.fromUrl')}</button>
+      </div>
+      <div id="chList"></div>
+    </div>`;
+  $('#saveMeta').onclick = async ()=>{
+    await post('/api/collection/save',{id:cid,title:$('#cTitle').value.trim(),
+      author:$('#cAuthor').value.trim(),language_code:$('#cLang').value});
+    toast(t('common.save')); renderCollection(cid); };
+  $('#coverFile').onchange = e=>{
+    const f=e.target.files[0]; if(!f) return;
+    const fr=new FileReader();
+    fr.onload = async ()=>{ await post('/api/collection/cover',{id:cid,data_url:fr.result}); renderCollection(cid); };
+    fr.readAsDataURL(f); };
+  $('#btnImport').onclick = ()=>importModal(cid);
+  $('#btnExport').onclick = ()=>exportModal(cid);
+  $('#btnDelColl').onclick = async ()=>{
+    if(!confirm(t('coll.delConfirm'))) return;
+    await post('/api/collection/delete',{id:cid}); setView('collections'); };
+  $('#addBlank').onclick = async ()=>{
+    await post('/api/article/add',{collectionId:cid,title:LANG==='zh'?'新页面':'New page',parsed_html:'<p></p>'});
+    loadChapters(cid); };
+  $('#addByUrl').onclick = ()=>modal({title:t('common.fromUrl'),
+    body:`<label class="fld"><span>URL</span><input type="url" id="auUrl" placeholder="https://…"/></label>
+          <label class="chk"><input type="checkbox" id="auChrome" checked/> ${t('imp.useChrome')}</label>`,
+    okText:t('common.ok'),
+    onOk: async ()=>{
+      const u=$('#auUrl').value.trim(); if(!u) return false;
+      const r = await post('/api/article/addUrl',{collectionId:cid,url:u,useChrome:$('#auChrome').checked});
+      if(!r.ok){ toast(r.err); return false; }
+      closeModal(); loadChapters(cid); }});
+  loadChapters(cid);
+}
+
+async function loadChapters(cid){
+  const r = await get('/api/articles?collection='+encodeURIComponent(cid));
+  const A = r.articles;
+  $('#chCount').textContent = A.length + ' ' + t('coll.chapters');
+  const box = $('#chList');
+  if(!A.length){ box.innerHTML = `<div class="empty">${t('ch.empty')}</div>`; return; }
+  box.innerHTML = A.map((a,i)=>`<div class="ch">
+      <div class="no">${i+1}</div>
+      <div class="ti" data-open="${a.id}"><b>${esc(a.title||'')}</b>
+        <small>${a.body_len? a.body_len+(LANG==='zh'?' 字':' ch'):'—'} · ${esc(a.url||a.source||'')} · ${esc(a.mode||'')}</small></div>
+      <button class="btn sm" data-up="${a.id}">↑</button>
+      <button class="btn sm" data-dn="${a.id}">↓</button>
+      <button class="btn sm" data-open2="${a.id}">${t('common.viewEdit')}</button>
+      <button class="btn sm danger" data-del="${a.id}">${t('common.delete')}</button>
+    </div>`).join('');
+  $$('[data-open]',box).forEach(e=>e.onclick=()=>openArticle(e.dataset.open,()=>loadChapters(cid)));
+  $$('[data-open2]',box).forEach(e=>e.onclick=()=>openArticle(e.dataset.open2,()=>loadChapters(cid)));
+  $$('[data-up]',box).forEach(e=>e.onclick=async()=>{await post('/api/article/move',{id:e.dataset.up,delta:-1,collectionId:cid});loadChapters(cid);});
+  $$('[data-dn]',box).forEach(e=>e.onclick=async()=>{await post('/api/article/move',{id:e.dataset.dn,delta:1,collectionId:cid});loadChapters(cid);});
+  $$('[data-del]',box).forEach(e=>e.onclick=async()=>{
+    if(!confirm(t('ch.delConfirm'))) return;
+    await post('/api/article/delete',{id:e.dataset.del}); loadChapters(cid);});
+}
+
+async function openArticle(aid,onSaved){
+  const a = await get('/api/article?id='+encodeURIComponent(aid));
+  const st = {mode:'preview', html:a.parsed_html||''};
+  const m = modal({title:a.title||'', wide:true,
+    body:`<label class="fld"><span>${t('ch.title')}</span><input type="text" id="aTitle" value="${esc(a.title||'')}"/></label>
+      <div class="row" style="margin-bottom:10px">
+        <div class="tabs" style="border:0;margin:0">
+          <button id="tabPv" class="on">${t('ch.preview')}</button>
+          <button id="tabEd">${t('ch.editBody')}</button>
+          <button id="tabHtml">${t('ch.html')}</button></div>
+        <span class="grow"></span>
+        ${a.url?`<a class="btn sm" href="${esc(a.url)}" target="_blank">${t('ch.openSrc')}</a>`:''}
+      </div><div id="pane"></div>`,
+    okText:t('common.save'),
+    onOk: async ()=>{
+      st.html = readPane();
+      await post('/api/article/save',{id:aid,title:$('#aTitle').value.trim(),parsed_html:st.html});
+      toast(t('common.save')); if(onSaved) onSaved(); }});
+  const pane = $('#pane',m);
+  function readPane(){ const e=$('#edBox'),h=$('#htmlBox'); return e? e.innerHTML : h? h.value : st.html; }
+  function paint(){
+    $('#tabPv',m).classList.toggle('on',st.mode==='preview');
+    $('#tabEd',m).classList.toggle('on',st.mode==='edit');
+    $('#tabHtml',m).classList.toggle('on',st.mode==='html');
+    if(st.mode==='preview') pane.innerHTML = `<div class="preview">${st.html||'<p class="muted">—</p>'}</div>`;
+    else if(st.mode==='edit') pane.innerHTML = `<div class="editarea" id="edBox" contenteditable="true">${st.html}</div>`;
+    else pane.innerHTML = `<textarea id="htmlBox" style="height:54vh">${esc(st.html)}</textarea>`;
+  }
+  const go = mode => { st.html = readPane(); st.mode = mode; paint(); };
+  $('#tabPv',m).onclick=()=>go('preview');
+  $('#tabEd',m).onclick=()=>go('edit');
+  $('#tabHtml',m).onclick=()=>go('html');
+  paint();
+}
+
+/* ============================== 导入 ============================== */
+function importModal(cid){
+  let tab='urls';
+  const m = modal({title:t('imp.title'), wide:true,
+    body:`<div class="tabs">
+      <button data-t="urls" class="on">${t('imp.urls')}</button>
+      <button data-t="website">${t('imp.website')}</button>
+      <button data-t="rss">${t('imp.rss')}</button>
+      <button data-t="markdown">${t('imp.md')}</button></div><div id="ipane"></div>`});
+  m.querySelector('.ft').innerHTML = `<button class="btn" onclick="closeModal()">${t('common.close')}</button>`;
+  const pane = $('#ipane',m);
+  $$('.tabs button',m).forEach(b=>b.onclick=()=>{tab=b.dataset.t;
+    $$('.tabs button',m).forEach(x=>x.classList.toggle('on',x===b)); paint();});
+  const chromeChk = id=>`<label class="chk"><input type="checkbox" id="${id}" checked/> ${t('imp.useChrome')}
+      <span class="muted">${t('imp.useChromeNote')}</span></label>`;
+
+  function paint(){
+    if(tab==='urls'){
+      pane.innerHTML = `
+        <label class="fld"><span>${t('imp.urlsHint')}</span>
+          <textarea id="uList" rows="10" placeholder="${t('imp.onePerLine')}&#10;https://archive.ph/xxxxx&#10;https://example.com/article"></textarea>
+          <span class="muted" id="uCount">${t('imp.onePerLine')}</span></label>
+        ${chromeChk('uc')}
+        <div class="row" style="margin-top:10px"><button class="btn primary" id="uGo">${t('imp.start')}</button></div>`;
+      const ta = $('#uList');
+      const count = ()=>{ const n = ta.value.split('\n').map(s=>s.trim()).filter(Boolean).length;
+        $('#uCount').textContent = t('msg.pasted').replace('{n}', n); };
+      ta.addEventListener('input', count); count();
+      $('#uGo').onclick = async ()=>{
+        const urls = ta.value.split('\n').map(s=>s.trim()).filter(Boolean);
+        if(!urls.length){ toast(t('imp.onePerLine')); return; }
+        const r = await post('/api/import/urls',{collectionId:cid,urls,useChrome:$('#uc').checked});
+        closeModal(); openJob(r.job, ()=>loadChapters(cid)); };
+    }
+    else if(tab==='website'){
+      pane.innerHTML = `
+        <div class="row" style="align-items:flex-end">
+          <label class="fld grow" style="margin:0"><span>${t('imp.siteUrl')}</span>
+            <input type="url" id="wUrl" placeholder="https://example.com/blog"/></label>
+          <label class="fld" style="margin:0"><span>${t('imp.src')}</span><select id="wMode">
+            <option value="links">${t('imp.srcLinks')}</option>
+            <option value="sitemap">${t('imp.srcSitemap')}</option></select></label>
+          <button class="btn" id="wLoad">${t('imp.loadLinks')}</button></div>
+        <div style="margin:12px 0">${chromeChk('wc')}
+          <label class="chk"><input type="checkbox" id="wSame" checked/> ${t('imp.sameDomain')}</label></div>
+        <div id="wList" class="muted">—</div>`;
+      $('#wLoad').onclick = async ()=>{
+        $('#wList').innerHTML = '<span class="spinner"></span>';
+        try{
+          const r = await post('/api/import/website/list',{url:$('#wUrl').value.trim(),
+            useChrome:$('#wc').checked,sameDomain:$('#wSame').checked,mode:$('#wMode').value});
+          if(!r.links.length){ $('#wList').innerHTML = `<div class="empty">0</div>`; return; }
+          window.__wl = r.links;
+          $('#wList').innerHTML = `
+            <div class="row" style="margin-bottom:8px">
+              <label class="chk"><input type="checkbox" id="wAll" checked/> ${t('imp.selectAll')}</label>
+              <span class="muted">${r.links.length}</span><span class="grow"></span>
+              <button class="btn primary sm" id="wGo">${t('imp.importSel')}</button></div>
+            <div style="max-height:38vh;overflow:auto;border-radius:var(--radius-md);border:1px solid var(--line-soft)">
+            <table><tbody>${r.links.map((l,i)=>`<tr>
+              <td style="width:30px"><input type="checkbox" class="wcb" data-i="${i}" checked/></td>
+              <td><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:620px">${esc(l.title||'')}</div>
+              <div class="muted" style="font-size:11px">${esc(l.href)}</div></td></tr>`).join('')}
+            </tbody></table></div>`;
+          $('#wAll').onchange = e=>$$('.wcb').forEach(c=>c.checked=e.target.checked);
+          $('#wGo').onclick = async ()=>{
+            const sel = $$('.wcb').filter(c=>c.checked).map(c=>window.__wl[+c.dataset.i]);
+            if(!sel.length) return;
+            const rr = await post('/api/import/website/commit',{collectionId:cid,links:sel,useChrome:$('#wc').checked});
+            closeModal(); openJob(rr.job, ()=>loadChapters(cid)); };
+        }catch(e){ $('#wList').innerHTML = `<span class="tag err">${esc(e.message)}</span>`; }};
+    }
+    else if(tab==='rss'){
+      pane.innerHTML = `
+        <div class="row" style="align-items:flex-end">
+          <label class="fld grow" style="margin:0"><span>${t('imp.feedUrl')}</span>
+            <input type="url" id="rUrl" placeholder="https://example.com/feed"/></label>
+          <button class="btn" id="rLoad">${t('imp.loadItems')}</button></div>
+        <div style="margin:12px 0">${chromeChk('rc')}</div>
+        <div id="rList" class="muted">—</div>`;
+      $('#rLoad').onclick = async ()=>{
+        $('#rList').innerHTML = '<span class="spinner"></span>';
+        try{
+          const r = await post('/api/import/rss/preview',{url:$('#rUrl').value.trim(),limit:60});
+          if(!r.items.length){ $('#rList').innerHTML = '<div class="empty">0</div>'; return; }
+          window.__ri = r.items;
+          $('#rList').innerHTML = `
+            <div class="row" style="margin-bottom:8px">
+              <label class="chk"><input type="checkbox" id="rAll" checked/> ${t('imp.selectAll')}</label>
+              <span class="muted">${r.items.length}</span><span class="grow"></span>
+              <button class="btn primary sm" id="rGo">${t('imp.importSel')}</button></div>
+            <div style="max-height:38vh;overflow:auto;border-radius:var(--radius-md);border:1px solid var(--line-soft)">
+            <table><tbody>${r.items.map((it,i)=>`<tr>
+              <td style="width:30px"><input type="checkbox" class="rcb" data-i="${i}" checked/></td>
+              <td>${esc(it.title)} ${it.has_full?`<span class="tag ok">${t('imp.rssFull')}</span>`:''}
+              <div class="muted" style="font-size:11px">${esc(it.pub||'')} · ${esc(it.link)}</div></td></tr>`).join('')}
+            </tbody></table></div>`;
+          $('#rAll').onchange = e=>$$('.rcb').forEach(c=>c.checked=e.target.checked);
+          $('#rGo').onclick = async ()=>{
+            const sel = $$('.rcb').filter(c=>c.checked).map(c=>window.__ri[+c.dataset.i]);
+            if(!sel.length) return;
+            const rr = await post('/api/import/rss/commit',{collectionId:cid,items:sel,useChrome:$('#rc').checked});
+            closeModal(); openJob(rr.job, ()=>loadChapters(cid)); };
+        }catch(e){ $('#rList').innerHTML = `<span class="tag err">${esc(e.message)}</span>`; }};
+    }
+    else{
+      pane.innerHTML = `
+        <label class="fld"><span>${t('imp.mdHint')}</span>
+          <textarea id="mdText" rows="16" placeholder="# Article one&#10;text…&#10;&#10;# Article two&#10;text…"></textarea></label>
+        <div class="row"><button class="btn primary" id="mdGo">${t('common.import')}</button></div>`;
+      $('#mdGo').onclick = async ()=>{
+        const text = $('#mdText').value; if(!text.trim()) return;
+        const r = await post('/api/import/markdown',{collectionId:cid,text});
+        closeModal(); openJob(r.job, ()=>loadChapters(cid)); };
+    }
+  }
+  paint();
+}
+
+function exportModal(cid){
+  modal({title:t('exp.title'),
+    body:`<label class="chk"><input type="checkbox" id="exImg" checked/> ${t('exp.embed')}</label>
+          <label class="chk"><input type="checkbox" id="exPref"/> ${t('exp.noPreface')}</label>
+          <p class="muted" style="margin-top:12px">${t('exp.note')}</p>`,
+    okText:t('exp.start'),
+    onOk: async ()=>{
+      const r = await post('/api/export',{collectionId:cid,embedImages:$('#exImg').checked,removePreface:$('#exPref').checked});
+      closeModal(); openJob(r.job); }});
+}
+
+/* ============================ Rssdailyepub ============================ */
+async function renderRss(){
+  $('#title').textContent = 'Rssdailyepub';
+  const src = await get('/api/rss/sources');
+  const sch = await get('/api/rss/schedule');
+  const st = (S.state && S.state.settings) || {};
+  const cats = src.categories, chosen = st.schedule_categories || [];
+  $('#view').innerHTML = `
+    <div class="card glass">
+      <h3>${t('rss.gen')}</h3>
+      <div class="row" style="align-items:flex-end;gap:14px">
+        <label class="fld" style="margin:0"><span>${t('rss.recent')}</span>
+          <select id="gDays" style="width:auto">${[1,2,3,7].map(d=>`<option value="${d}" ${st.window_days==d?'selected':''}>${d} ${t('rss.days')}</option>`).join('')}</select></label>
+        <label class="fld" style="margin:0"><span>${t('rss.perFeed')}</span>
+          <input type="number" id="gMax" value="${st.max_per_feed||15}" style="width:86px"/></label>
+        <label class="chk"><input type="checkbox" id="gMail" ${st.send_email?'checked':''}/> ${t('rss.mail')}</label>
+        <span class="grow"></span>
+        <button class="btn" id="gForce">${t('rss.force')}</button>
+        <button class="btn primary" id="gGo">${t('rss.go')}</button>
+      </div>
+      <div style="margin-top:14px">
+        <div class="row" style="margin-bottom:7px"><b style="font-size:13px">${t('rss.which')}</b>
+          <span class="muted">${t('rss.whichNote')}</span><span class="grow"></span>
+          <button class="btn sm" id="catAll">${t('rss.all')}</button>
+          <button class="btn sm" id="catNone">${t('rss.none')}</button></div>
+        <div class="row" id="catBox">${cats.map(c=>`<label class="chk"><input type="checkbox" class="gcat"
+          value="${esc(c.name)}" ${chosen.includes(c.name)?'checked':''}/> ${esc(c.name)}
+          <span class="muted">(${c.count})</span></label>`).join('')}</div>
+      </div>
+      <div id="gProg" style="margin-top:14px;display:none">
+        <div class="prog"><i></i></div><div class="muted" id="gMsg" style="margin-top:7px"></div></div>
+    </div>
+
+    <div class="card glass">
+      <h3>${t('rss.sched')}</h3>
+      <div class="row" style="align-items:flex-end;gap:14px">
+        <label class="fld" style="margin:0"><span>${t('rss.freq')}</span>
+          <select id="sMode" style="width:auto">
+            <option value="daily" ${sch.mode==='daily'&&sch.enabled?'selected':''}>${t('rss.daily')}</option>
+            <option value="every2" ${sch.mode==='every2'&&sch.enabled?'selected':''}>${t('rss.every2')}</option>
+            <option value="every3" ${sch.mode==='every3'&&sch.enabled?'selected':''}>${t('rss.every3')}</option>
+            <option value="off" ${(!sch.enabled||sch.mode==='off')?'selected':''}>${t('rss.off')}</option>
+          </select></label>
+        <label class="fld" style="margin:0"><span>${t('rss.time')}</span>
+          <div class="row" style="gap:6px">
+            <input type="number" id="sHour" min="0" max="23" value="${sch.hour==null?9:sch.hour}" style="width:70px"/>
+            <span>:</span>
+            <input type="number" id="sMin" min="0" max="59" value="${sch.minute==null?0:sch.minute}" style="width:70px"/>
+          </div></label>
+        <button class="btn primary" id="sSave">${t('rss.saveSched')}</button>
+        <button class="btn" id="sRun">${t('rss.runNow')}</button>
+      </div>
+      <div class="kv" style="margin-top:14px">
+        <b>${t('rss.jobState')}</b><span>${sch.loaded?`<span class="tag ok">${t('rss.loaded')}</span>`:`<span class="tag warn">${t('rss.notLoaded')}</span>`}
+          ${sch.old_job_loaded?` <span class="tag warn">${t('rss.oldJob')}</span>`:''}</span>
+        <b>${t('rss.lastRun')}</b><span>${esc(sch.last_run||'—')}</span>
+        <b>${t('rss.nextRun')}</b><span>${esc(sch.next_run||'—')}</span>
+      </div>
+      <p class="muted" style="margin:12px 0 0">${t('rss.schedNote')}</p>
+    </div>
+
+    <div class="card glass">
+      <div class="row" style="margin-bottom:10px">
+        <h3 style="margin:0;flex:1">${t('rss.sources')}
+          <span class="muted">${src.total} ${t('rss.sourcesCount')} · ${cats.length} ${t('rss.cats')}</span></h3>
+        <button class="btn sm" id="fAdd">${t('rss.addFeed')}</button>
+        <button class="btn sm" id="catAdd">${t('rss.addCat')}</button>
+        <button class="btn sm" id="opmlImport">${t('rss.importOpml')}</button>
+      </div>
+      <div id="srcList"></div>
+    </div>`;
+
+  const chosenCats = ()=>$$('.gcat').filter(c=>c.checked).map(c=>c.value);
+  $('#catAll').onclick=()=>$$('.gcat').forEach(c=>c.checked=true);
+  $('#catNone').onclick=()=>$$('.gcat').forEach(c=>c.checked=false);
+  const saveGen = ()=>post('/api/rss/settings/save',{window_days:+$('#gDays').value,
+    max_per_feed:+$('#gMax').value, send_email:$('#gMail').checked, schedule_categories:chosenCats()});
+  $('#gGo').onclick = async ()=>{ await saveGen();
+    const r = await post('/api/rss/generate',{hours:+$('#gDays').value*24,maxPerFeed:+$('#gMax').value,
+      categories:chosenCats(),sendEmail:$('#gMail').checked});
+    watchGen(r.job); };
+  $('#gForce').onclick = async ()=>{ await saveGen();
+    const r = await post('/api/rss/generate',{hours:+$('#gDays').value*24,maxPerFeed:+$('#gMax').value,
+      categories:chosenCats(),sendEmail:$('#gMail').checked,refresh:true});
+    watchGen(r.job); };
+  $('#sSave').onclick = async ()=>{
+    await post('/api/rss/schedule/save',{enabled:$('#sMode').value!=='off',mode:$('#sMode').value,
+      hour:+$('#sHour').value,minute:+$('#sMin').value});
+    toast(t('rss.saveSched')); renderRss(); };
+  $('#sRun').onclick = async ()=>{ const r = await post('/api/rss/force_run',{}); watchGen(r.job); };
+  $('#fAdd').onclick = ()=>feedModal(null,cats,()=>renderRss());
+  $('#catAdd').onclick = async ()=>{ const n = prompt(t('rss.addCat')); if(!n) return;
+    await post('/api/rss/category/add',{name:n}); renderRss(); };
+  $('#opmlImport').onclick = async ()=>{ const p = prompt('OPML'); if(!p) return;
+    const r = await post('/api/rss/import/opml',{path:p}); toast(r.ok?('+'+r.added):r.err); renderRss(); };
+  paintSources(cats);
+}
+
+function watchGen(jid){
+  if(!jid) return;
+  const box = $('#gProg');
+  if(!box || !document.body.contains(box)){ openJob(jid, refreshState); return; }
+  box.style.display='';
+  const bar = $('#gProg .prog i'), msg = $('#gMsg');
+  const timer = setInterval(async ()=>{
+    let j; try{ j = await get('/api/job?id='+jid); }catch(e){ return; }
+    if(!j || !document.body.contains(box)){ clearInterval(timer); return; }
+    const pct = j.total? Math.round(j.done/j.total*100) : (j.status==='running'?6:100);
+    bar.style.width = pct+'%';
+    msg.textContent = (j.message||'') + (j.total? ` (${j.done}/${j.total})` : '');
+    if(j.status!=='running' && j.status!=='queued'){
+      clearInterval(timer);
+      bar.style.width='100%';
+      msg.textContent = (j.status==='done'? t('job.done')+' ' : '') + (j.message||'');
+      refreshState();
+      if(j.status==='done'){
+        const made = (j.result && j.result.made) || [];
+        toast(made.length? (t('job.made')+' '+made.join('、')) : t('job.nothing'), 5000);
+      }
+    }
+  }, 1200);
+}
+
+async function paintSources(cats){
+  const box = $('#srcList');
+  if(!cats.length){ box.innerHTML = `<div class="empty">${t('rss.noSources')}</div>`; return; }
+  box.innerHTML = cats.map((c,ci)=>`
+    <div style="margin-bottom:14px">
+      <div class="row" style="margin-bottom:6px">
+        <b>${esc(c.name)}</b><span class="muted">${c.count}</span><span class="grow"></span>
+        <button class="btn sm" data-cr="${ci}">${t('rss.rename')}</button>
+        <button class="btn sm danger" data-cd="${ci}">${t('rss.delCat')}</button></div>
+      <table><tbody>${c.feeds.map(f=>`<tr>
+        <td>${esc(f.title||f.url)}</td>
+        <td class="muted" style="max-width:430px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.url)}</td>
+        <td style="width:1%"><button class="btn sm" data-fe="${encodeURIComponent(f.url)}"
+          data-fc="${esc(c.name)}" data-ft="${esc(f.title||'')}">${t('common.edit')}</button></td>
+        <td style="width:1%"><button class="btn sm danger" data-fd="${encodeURIComponent(f.url)}">${t('common.delete')}</button></td>
+      </tr>`).join('')}</tbody></table>
+    </div>`).join('');
+  $$('[data-cr]',box).forEach(b=>b.onclick=async()=>{
+    const c=cats[+b.dataset.cr]; const n=prompt(t('rss.rename'),c.name);
+    if(!n||n===c.name) return;
+    await post('/api/rss/category/rename',{name:c.name,newName:n}); renderRss(); });
+  $$('[data-cd]',box).forEach(b=>b.onclick=async()=>{
+    const c=cats[+b.dataset.cd]; if(!confirm(t('rss.delCatConfirm'))) return;
+    await post('/api/rss/category/delete',{name:c.name}); renderRss(); });
+  $$('[data-fd]',box).forEach(b=>b.onclick=async()=>{
+    await post('/api/rss/feed/delete',{url:decodeURIComponent(b.dataset.fd)}); renderRss(); });
+  $$('[data-fe]',box).forEach(b=>b.onclick=()=>feedModal(
+    {url:decodeURIComponent(b.dataset.fe),title:b.dataset.ft,category:b.dataset.fc},cats,()=>renderRss()));
+}
+
+function feedModal(feed,cats,done){
+  modal({title: feed? t('common.edit') : t('rss.addFeed'),
+    body:`<label class="fld"><span>${t('rss.feedName')}</span><input type="text" id="fdT" value="${esc(feed?feed.title:'')}"/></label>
+      <label class="fld"><span>${t('rss.feedUrl')}</span><input type="url" id="fdU" value="${esc(feed?feed.url:'')}"/></label>
+      <label class="fld"><span>${t('rss.feedCat')}</span>
+        <input type="text" id="fdC" list="catdl" value="${esc(feed?feed.category:(cats[0]?cats[0].name:''))}"/>
+        <datalist id="catdl">${cats.map(c=>`<option value="${esc(c.name)}">`).join('')}</datalist>
+        <span class="muted">${t('rss.feedCatNote')}</span></label>`,
+    okText:t('common.save'),
+    onOk: async ()=>{
+      const u=$('#fdU').value.trim(), ti=$('#fdT').value.trim(), c=$('#fdC').value.trim();
+      if(!u) return false;
+      if(feed) await post('/api/rss/feed/update',{url:feed.url,newUrl:u,title:ti,category:c});
+      else await post('/api/rss/feed/add',{title:ti,url:u,category:c});
+      closeModal(); done(); }});
+}
+
+/* ============================ rssdailyepub书库 ============================ */
+async function renderLibrary(){
+  $('#title').textContent = t('nav.library');
+  const lib = await get('/api/library');
+  $('#view').innerHTML = `
+    <div class="card glass">
+      <h3>${t('lib.collections')} <span class="muted">${t('lib.collectionsNote')}</span></h3>
+      <div class="grid" id="lc"></div></div>
+    <div class="card glass">
+      <h3>${t('lib.rss')} <span class="muted">${t('lib.rssNote')}</span></h3>
+      <div class="grid" id="lr"></div></div>`;
+  const withBooks = lib.collections.filter(c=>c.books&&c.books.length);
+  const lc = $('#lc');
+  lc.innerHTML = withBooks.length
+    ? withBooks.map(c=>`<div class="folder glass" data-c="${c.id}">
+        <div class="t">📁 ${esc(c.title)}</div><div class="muted">${c.books.length}</div></div>`).join('')
+    : `<div class="empty" style="grid-column:1/-1">${t('lib.noColl')}</div>`;
+  $$('[data-c]',lc).forEach(el=>el.onclick=()=>{
+    const c=withBooks.find(x=>x.id===el.dataset.c); bookListModal(c.title,c.books); });
+  const lr = $('#lr');
+  lr.innerHTML = lib.rss.length
+    ? lib.rss.map(d=>`<div class="folder glass" data-d="${esc(d.date)}">
+        <div class="t">📁 ${esc(d.date)}</div><div class="muted">${d.count} · ${fmtSize(d.total_size)}</div></div>`).join('')
+    : `<div class="empty" style="grid-column:1/-1">${t('lib.noRss')}</div>`;
+  $$('[data-d]',lr).forEach(el=>el.onclick=()=>{
+    const d=lib.rss.find(x=>x.date===el.dataset.d); bookListModal(d.date,d.books); });
+}
+
+function bookListModal(title,books){
+  modal({title, wide:true,
+    body: books.length? `<table><tbody>${books.map((b,i)=>`<tr>
+        <td>📖 ${esc(b.name)}</td>
+        <td class="muted" style="width:1%">${fmtSize(b.size)}</td>
+        <td class="muted" style="width:1%">${esc(b.mtime_str)}</td>
+        <td style="width:1%"><button class="btn sm" data-bk="${i}" data-read="1">${t('common.open')}</button></td>
+        <td style="width:1%"><button class="btn sm" data-bk="${i}" data-read="0">${t('common.reveal')}</button></td>
+      </tr>`).join('')}</tbody></table>` : '<div class="empty">—</div>',
+    okText:null});
+  // 用 fetch 而不是 <a target=_blank>:原生窗口里外链会被交给默认浏览器,
+  // 那样会弹出一个只显示 JSON 的浏览器标签页。
+  const host = $('#modalHost');
+  host.querySelector('.ft').innerHTML = `<button class="btn" onclick="closeModal()">${t('common.close')}</button>`;
+  $$('[data-bk]', host).forEach(el => el.onclick = async ()=>{
+    const b = books[+el.dataset.bk];
+    if(b) await get('/api/open?target='+encodeURIComponent(b.path)+'&read='+el.dataset.read);
+  });
+}
+
+/* ============================== 设置 ============================== */
+async function renderSettings(){
+  $('#title').textContent = t('nav.settings');
+  const s = await get('/api/state');
+  const c = s.capture||{}, P = s.paths||{}, ui = s.settings.ui||{};
+  $('#view').innerHTML = `
+    <div class="card glass">
+      <h3>${t('set.appearance')}</h3>
+      <div class="row" style="gap:26px;align-items:flex-start">
+        <div style="min-width:250px">
+          <div class="muted" style="margin-bottom:6px">${t('set.theme')}</div>
+          <div class="seg" id="segTheme">
+            <button data-t="light" class="${(ui.theme||'auto')==='light'?'on':''}">${t('set.light')}</button>
+            <button data-t="dark" class="${(ui.theme||'auto')==='dark'?'on':''}">${t('set.dark')}</button>
+            <button data-t="auto" class="${(ui.theme||'auto')==='auto'?'on':''}">${t('set.auto')}</button>
+          </div>
+        </div>
+        <div style="min-width:200px">
+          <div class="muted" style="margin-bottom:6px">${t('set.lang')}</div>
+          <div class="seg" id="segLang">
+            <button data-l="zh" class="${LANG==='zh'?'on':''}">中文</button>
+            <button data-l="en" class="${LANG==='en'?'on':''}">English</button>
+          </div>
+        </div>
+        <div class="grow" style="min-width:240px">
+          <div class="muted" style="margin-bottom:6px">${t('set.glass')} — <span id="glassVal">${Math.round((ui.glass??0.62)*100)}%</span></div>
+          <input type="range" class="slider" id="glassSlider" min="0" max="100" value="${Math.round((ui.glass??0.62)*100)}"/>
+          <div class="muted" style="margin-top:4px">${t('set.glassNote')}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card glass">
+      <h3>${t('set.library')}</h3>
+      <p class="muted">${t('set.libraryNote')}</p>
+      <div class="row">
+        <input type="text" id="libPath" value="${esc(P.lib_dir||'')}" style="max-width:460px"/>
+        <button class="btn" id="libPick">${t('set.pick')}</button>
+        <button class="btn primary" id="libSave">${t('common.save')}</button>
+      </div>
+      <div class="kv" style="margin-top:12px">
+        <b>output</b><span class="muted">${esc(P.output_dir||'')}</span>
+        <b>books</b><span class="muted">${esc(P.books_dir||'')}</span>
+      </div>
+    </div>
+
+    <div class="card glass">
+      <h3>${t('set.browser')}</h3>
+      <p class="muted">${t('set.browserNote')}</p>
+      <div class="kv">
+        <b>${t('set.port')}</b><span>${c.port} — ${c.chrome_running?`<span class="tag ok">${t('set.connected')}</span>`:`<span class="tag warn">${t('set.disconnected')}</span>`}</span>
+        <b>${t('set.ver')}</b><span>${esc(c.version||'—')}</span>
+        <b>${t('set.profile')}</b><span>${c.profile_copied?`<span class="tag ok">${t('set.ready')}</span>`:`<span class="tag warn">${t('set.notReady')}</span>`}</span>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn primary" id="cStart">${t('set.startChrome')}</button>
+        <button class="btn" id="cSync">${t('set.sync')}</button>
+        <button class="btn" id="cTest">${t('set.test')}</button>
+      </div>
+      <p class="muted" style="margin:12px 0 0">${t('set.syncNote')}</p>
+    </div>
+
+    <div class="card glass">
+      <h3>${t('set.about')}</h3>
+      <div class="kv">
+        <b>${t('set.app')}</b><span>CEVTUO-RWP2EPUB</span>
+        <b>author</b><span>JINGWEI CHANG</span>
+        <b>${t('set.dataDir')}</b><span class="muted"><code>${esc(P.base||'')}</code></span>
+      </div>
+    </div>`;
+
+  $('#segTheme').onclick = async e=>{ const b=e.target.closest('button'); if(!b) return;
+    S.ui.theme=b.dataset.t; applyTheme();
+    $$('#segTheme button').forEach(x=>x.classList.toggle('on',x===b));
+    await post('/api/settings/ui',{theme:S.ui.theme}); };
+  $('#segLang').onclick = async e=>{ const b=e.target.closest('button'); if(!b) return;
+    LANG=b.dataset.l; applyStaticI18n();
+    await post('/api/settings/ui',{lang:LANG}); renderSettings(); };
+  const sl = $('#glassSlider');
+  sl.oninput = ()=>{ const v=+sl.value/100; applyGlass(v); $('#glassVal').textContent = sl.value+'%'; };
+  sl.onchange = ()=>post('/api/settings/ui',{glass:+sl.value/100});
+  $('#libPick').onclick = ()=>folderPicker($('#libPath').value, p=>{ $('#libPath').value = p; });
+  $('#libSave').onclick = async ()=>{
+    const r = await post('/api/settings/library',{path:$('#libPath').value.trim()});
+    toast(t('set.moved').replace('{n}', r.moved));
+    refreshState(); renderSettings(); };
+  $('#cStart').onclick = async ()=>{ const r = await post('/api/capture/ensure',{}); toast(r.ok?'Chrome OK':r.err); renderSettings(); };
+  $('#cSync').onclick = async ()=>{ toast('…',6000); await post('/api/capture/sync',{}); toast('OK'); renderSettings(); };
+  $('#cTest').onclick = async ()=>{ const u=prompt('URL','https://example.com'); if(!u) return;
+    const r = await post('/api/capture/test',{url:u});
+    alert(r.ok? (r.len+' chars\n'+r.title) : r.err); };
+}
+
+/* 文件夹选择器 */
+async function folderPicker(startPath, onPick){
+  let cur = startPath || '';
+  const m = modal({title:t('set.pick'), wide:true, body:'<div id="fpHolder"><span class="spinner"></span></div>',
+    okText:t('common.ok'),
+    onOk: async ()=>{ onPick(cur); closeModal(); }});
+  const holder = $('#fpHolder', m);
+  async function load(p){
+    try{
+      const r = await get('/api/fs/list?path='+encodeURIComponent(p||'~'));
+      cur = r.path;
+      const cloud = r.suggestions.filter(s=>{ try{ return true; }catch(e){ return false; } });
+      holder.innerHTML = `
+        <div class="row" style="margin-bottom:10px">
+          <button class="btn sm" id="fpUp">↑</button>
+          <code class="grow" style="overflow:hidden;text-overflow:ellipsis">${esc(r.path)}</code>
+        </div>
+        <div class="row" style="margin-bottom:10px">${cloud.map(s=>`<button class="btn sm" data-jump="${esc(s.path)}">${esc(s.name)}</button>`).join('')}</div>
+        <div style="max-height:46vh;overflow:auto;border-radius:var(--radius-md);border:1px solid var(--line-soft)">
+          <table><tbody>${r.dirs.map(d=>`<tr><td style="cursor:pointer" data-nav="${esc(d.path)}">📁 ${esc(d.name)}</td></tr>`).join('')
+            || '<tr><td class="muted">—</td></tr>'}</tbody></table></div>`;
+      $('#fpUp',m).onclick = ()=>load(r.parent);
+      $$('[data-nav]',m).forEach(el=>el.onclick=()=>load(el.dataset.nav));
+      $$('[data-jump]',m).forEach(el=>el.onclick=()=>load(el.dataset.jump));
+    }catch(e){ holder.innerHTML = `<span class="tag err">${esc(e.message)}</span>`; }
+  }
+  load(cur);
+}
+
+/* ============================== 任务 ============================== */
+function openJob(jid,onDone){
+  if(!jid) return;
+  modal({title:t('job.title'), wide:true,
+    body:`<div class="prog" style="margin-bottom:10px"><i></i></div>
+      <div class="row" style="margin-bottom:12px">
+        <b id="jStat"></b><span class="muted" id="jMsg"></span><span class="grow"></span>
+        <button class="btn sm danger" id="jCancel">${t('job.cancel')}</button></div>
+      <div class="logbox" id="jLog"></div>`,
+    okText:null});
+  $('#modalHost .ft').innerHTML = `<button class="btn" onclick="closeModal()">${t('common.close')}</button>`;
+  $('#jCancel').onclick = async ()=>{ await post('/api/job/cancel',{id:jid}); toast(t('job.cancelledReq')); };
+  const timer = setInterval(async ()=>{
+    let j; try{ j = await get('/api/job?id='+jid); }catch(e){ return; }
+    const host = $('#modalHost');
+    if(!j || !j.id || !host.querySelector('.prog')){ clearInterval(timer); return; }
+    const live = (j.status==='running'||j.status==='queued');
+    const pct = j.total? Math.round(j.done/j.total*100) : (live?6:100);
+    host.querySelector('.prog i').style.width = pct+'%';
+    $('#jStat').textContent = ({running:t('job.running'),done:t('job.done'),error:t('job.error'),
+      cancelled:t('job.cancelled'),queued:t('job.queued')})[j.status]||j.status;
+    $('#jMsg').textContent = j.message||'';
+    const lg = $('#jLog'); if(lg){ lg.textContent=(j.log||[]).join('\n'); lg.scrollTop=lg.scrollHeight; }
+    // 结束后:进度条补满、取消按钮消失 —— 之前这里会一直停在半截
+    const cb = $('#jCancel');
+    if(cb) cb.style.display = live? '' : 'none';
+    if(!live){
+      clearInterval(timer);
+      host.querySelector('.prog i').style.width = '100%';
+      if(onDone) onDone(j);
+      refreshState();
+    }
+  }, 1000);
+}
+
+/* ============================== 弹窗 ============================== */
+function modal(opt){
+  closeModal();
+  const host = $('#modalHost');
+  host.innerHTML = `<div class="mask"><div class="modal ${opt.wide?'wide':''}">
+      <div class="hd"><h3>${esc(opt.title)}</h3><button class="x">&times;</button></div>
+      <div class="bd">${opt.body}</div>
+      <div class="ft"><button class="btn" data-x>${t('common.close')}</button>
+        ${opt.onOk?`<button class="btn primary" data-ok>${esc(opt.okText||t('common.ok'))}</button>`:''}</div>
+    </div></div>`;
+  const el = host.firstElementChild;
+  $('.x',el).onclick = closeModal;
+  $('[data-x]',el).onclick = closeModal;
+  el.onclick = e=>{ if(e.target===el) closeModal(); };
+  if(opt.onOk) $('[data-ok]',el).onclick = async ()=>{
+    const b=$('[data-ok]',el); b.disabled=true;
+    try{ await opt.onOk(); }catch(e){ toast(String(e.message||e)); }finally{ b.disabled=false; }
+  };
+  return el;
+}
+function closeModal(){ $('#modalHost').innerHTML=''; }
+window.closeModal = closeModal;
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
+
+/* ============================== 启动 ============================== */
+(async function boot(){
+  applyStaticI18n(); applyTheme(); applyGlass(0.62);
+  await refreshState();
+  setView('collections');
+  setInterval(refreshState, 3000);
+})();
+</script>
+</body>
+</html>

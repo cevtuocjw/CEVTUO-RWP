@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <!-- 银色玻璃/镀铬材质:靠冷白 ↔ 深灰的硬过渡制造金属反光带 -->
+    <linearGradient id="chrome" x1="0.1" y1="0" x2="0.9" y2="1">
+      <stop offset="0.00" stop-color="#ffffff"/>
+      <stop offset="0.16" stop-color="#e8ecf3"/>
+      <stop offset="0.30" stop-color="#98a2b3"/>
+      <stop offset="0.44" stop-color="#f4f7fb"/>
+      <stop offset="0.58" stop-color="#7c8697"/>
+      <stop offset="0.72" stop-color="#d7dee9"/>
+      <stop offset="0.86" stop-color="#8e98a8"/>
+      <stop offset="1.00" stop-color="#ffffff"/>
+    </linearGradient>
+    <linearGradient id="chrome2" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0.00" stop-color="#fdfefe"/>
+      <stop offset="0.22" stop-color="#aab3c2"/>
+      <stop offset="0.40" stop-color="#ffffff"/>
+      <stop offset="0.62" stop-color="#818b9c"/>
+      <stop offset="0.80" stop-color="#e3e8f0"/>
+      <stop offset="1.00" stop-color="#9aa3b2"/>
+    </linearGradient>
+    <linearGradient id="chromeV" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.35" stop-color="#c2cad6"/>
+      <stop offset="0.55" stop-color="#8b95a5"/>
+      <stop offset="0.78" stop-color="#eef2f8"/>
+      <stop offset="1" stop-color="#a8b1c0"/>
+    </linearGradient>
+    <radialGradient id="plate" cx="0.42" cy="0.30" r="0.95">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.45" stop-color="#f2f5f9"/>
+      <stop offset="0.78" stop-color="#dfe5ee"/>
+      <stop offset="1" stop-color="#c6cedb"/>
+    </radialGradient>
+    <linearGradient id="glassEdge" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#8e97a6" stop-opacity="0.45"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="9"/>
+    </filter>
+    <filter id="drop" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#5a6473" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- ===== 底板:macOS 圆角方(近 squircle) ===== -->
+  <path d="M512 40 C 880 40 984 144 984 512 C 984 880 880 984 512 984 C 144 984 40 880 40 512 C 40 144 144 40 512 40 Z"
+        fill="url(#plate)"/>
+  <path d="M512 40 C 880 40 984 144 984 512 C 984 880 880 984 512 984 C 144 984 40 880 40 512 C 40 144 144 40 512 40 Z"
+        fill="none" stroke="url(#glassEdge)" stroke-width="3" opacity="0.85"/>
+  <!-- 顶面高光 -->
+  <ellipse cx="470" cy="180" rx="360" ry="120" fill="url(#glow)" opacity="0.55"/>
+
+  <!-- ===== 后面的玫瑰 ===== -->
+  <g filter="url(#drop)">
+    <!-- 花萼/外层花瓣 -->
+    <g>
+      <path d="M512 150 C 660 150 760 250 762 400 C 764 300 700 214 596 186 C 660 250 664 360 620 430
+               C 700 400 748 330 748 254 C 700 178 616 150 512 150 Z" fill="url(#chrome2)" opacity="0.95"/>
+      <path d="M512 150 C 364 150 264 250 262 400 C 260 300 324 214 428 186 C 364 250 360 360 404 430
+               C 324 400 276 330 276 254 C 324 178 408 150 512 150 Z" fill="url(#chrome)" opacity="0.95"/>
+      <path d="M300 300 C 262 372 268 452 320 512 C 306 444 330 372 392 322 C 356 300 326 296 300 300 Z"
+            fill="url(#chrome2)"/>
+      <path d="M724 300 C 762 372 756 452 704 512 C 718 444 694 372 632 322 C 668 300 698 296 724 300 Z"
+            fill="url(#chrome)"/>
+    </g>
+    <!-- 中层花瓣 -->
+    <g>
+      <path d="M512 232 C 622 232 694 306 692 402 C 664 330 596 288 512 288 C 428 288 360 330 332 402
+               C 330 306 402 232 512 232 Z" fill="url(#chrome2)"/>
+      <path d="M512 268 C 604 268 664 330 660 406 C 630 350 578 320 512 320 C 446 320 394 350 364 406
+               C 360 330 420 268 512 268 Z" fill="url(#chrome)"/>
+      <path d="M512 300 C 586 300 634 352 630 414 C 604 368 562 344 512 344 C 462 344 420 368 394 414
+               C 390 352 438 300 512 300 Z" fill="url(#chrome2)"/>
+    </g>
+    <!-- 花心螺旋 -->
+    <g>
+      <path d="M512 330 C 578 330 620 372 616 424 C 594 386 558 366 512 366 C 466 366 430 386 408 424
+               C 404 372 446 330 512 330 Z" fill="url(#chrome)"/>
+      <path d="M512 356 C 560 356 590 388 586 426 C 568 398 542 384 512 384 C 482 384 456 398 438 426
+               C 434 388 464 356 512 356 Z" fill="url(#chrome2)"/>
+      <ellipse cx="512" cy="404" rx="34" ry="26" fill="url(#chrome)"/>
+      <ellipse cx="500" cy="396" rx="12" ry="8" fill="#ffffff" opacity="0.85"/>
+    </g>
+    <!-- 花瓣高光 -->
+    <path d="M356 236 C 424 200 528 196 592 224" fill="none" stroke="#ffffff" stroke-width="7"
+          stroke-linecap="round" opacity="0.75"/>
+    <path d="M382 288 C 436 262 520 258 570 278" fill="none" stroke="#ffffff" stroke-width="5"
+          stroke-linecap="round" opacity="0.6"/>
+    <!-- 花茎 -->
+    <path d="M512 430 C 508 540 520 650 556 760" fill="none" stroke="url(#chromeV)"
+          stroke-width="30" stroke-linecap="round"/>
+    <path d="M514 448 C 512 540 522 640 550 730" fill="none" stroke="#ffffff"
+          stroke-width="6" stroke-linecap="round" opacity="0.7"/>
+    <!-- 叶片 -->
+    <path d="M516 596 C 452 574 396 596 366 654 C 428 672 490 656 516 596 Z" fill="url(#chrome2)"/>
+    <path d="M508 630 C 560 606 620 618 654 664 C 598 692 534 682 508 630 Z" fill="url(#chrome)"/>
+  </g>
+
+  <!-- ===== 前方的小书(简笔、同一材质、不遮住玫瑰主体) ===== -->
+  <g filter="url(#drop)">
+    <!-- 书页投影 -->
+    <ellipse cx="512" cy="826" rx="210" ry="26" fill="#5a6473" opacity="0.28" filter="url(#soft)"/>
+    <!-- 左页 -->
+    <path d="M512 700 C 452 668 372 660 306 674 L 306 812 C 372 798 452 806 512 838 Z"
+          fill="url(#chrome)" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+    <!-- 右页 -->
+    <path d="M512 700 C 572 668 652 660 718 674 L 718 812 C 652 798 572 806 512 838 Z"
+          fill="url(#chrome2)" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+    <!-- 书脊 -->
+    <path d="M512 700 L 512 838" stroke="#ffffff" stroke-width="5" opacity="0.9"/>
+    <!-- 文字行(简笔) -->
+    <g stroke="#6f7889" stroke-width="5" stroke-linecap="round" opacity="0.5">
+      <path d="M344 706 L 474 700"/><path d="M344 736 L 474 730"/><path d="M344 766 L 474 760"/>
+      <path d="M550 700 L 680 706"/><path d="M550 730 L 680 736"/><path d="M550 760 L 680 766"/>
+    </g>
+    <!-- 书页高光 -->
+    <path d="M330 686 C 392 674 456 678 506 700" fill="none" stroke="#ffffff" stroke-width="6"
+          stroke-linecap="round" opacity="0.8"/>
+    <path d="M694 686 C 632 674 568 678 518 700" fill="none" stroke="#ffffff" stroke-width="6"
+          stroke-linecap="round" opacity="0.65"/>
+  </g>
+</svg>

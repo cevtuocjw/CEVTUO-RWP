@@ -1,0 +1,63 @@
+name: build-windows
+
+# Windows 的 .exe/安装包必须在 Windows 上构建 —— 不能在 macOS 上交叉编译
+# (Python 运行时和 lxml/Pillow 这些轮子都是平台相关的二进制)。
+# 这个 workflow 在 GitHub 的 windows runner 上把整套东西装配出来。
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: 组装 app 目录
+        shell: pwsh
+        run: |
+          $app = "app"
+          New-Item -ItemType Directory -Force -Path $app | Out-Null
+
+          # 1) 程序源码
+          Copy-Item *.py $app
+          Copy-Item run_scheduled.sh $app -ErrorAction SilentlyContinue
+          Copy-Item feeds.opml $app -ErrorAction SilentlyContinue
+          Copy-Item ui $app -Recurse
+
+          # 2) 自带 Python 运行时(setup-python 装的是一个可搬运的 CPython)
+          Copy-Item $env:pythonLocation "$app\python" -Recurse
+
+          # 3) 依赖
+          python -m pip install --upgrade pip
+          python -m pip install --target "$app\pylibs" `
+            feedparser ebooklib trafilatura requests pillow websocket-client
+
+          # 4) Windows 启动器
+          Copy-Item windows\CEVTUO-RWP2EPUB.cmd $app
+
+      - name: 自检(自带运行时能否脱离系统 Python 跑起来)
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = "$PWD\app\pylibs"
+          $env:CEVTUO_DATA_DIR = "$env:TEMP\cevtuo_ci"
+          cd app
+          .\python\python.exe -c "import sys; sys.path.insert(0,'.'); import store, opml, capture, imports, export_epub, jobs, scheduler, extract_page, sanitize; print('modules OK'); print('browser:', capture.BROWSER_NAME)"
+
+      - name: 打包 zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          Compress-Archive -Path app\* -DestinationPath out\CEVTUO-RWP2EPUB-windows.zip -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CEVTUO-RWP2EPUB-windows
+          path: out/CEVTUO-RWP2EPUB-windows.zip
+          retention-days: 30

@@ -1,0 +1,15 @@
+{
+  "smtp": {
+    "host": "smtp.qq.com",
+    "port": 465,
+    "user": "你的QQ邮箱@qq.com",
+    "password": "QQ邮箱授权码"
+  },
+  "mail": {
+    "to": "你的kindle地址@kindle.com"
+  },
+  "cookies": {},
+  "fulltext": {
+    "ext": { "enabled": false, "cmd": [] }
+  }
+}
