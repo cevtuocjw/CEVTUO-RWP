@@ -1,144 +1,124 @@
-# rss-daily-epub
+# CEVTUO-RWP2EPUB
 
-把 RSS 订阅每天的更新自动打包成 **Kindle 连续流** epub,按 OPML 分类各自成书。
-「书」不再是点目录→进文章,而是把当天文章**全部顺序铺开**,像一本杂志一样直接一直往下翻。
+把**网页、网站内链接、RSS 订阅、Markdown** 做成 EPUB 电子书。原生桌面应用，自带运行时，下载即用。
 
-产物示例(`output/2026-09-05/`):
-```
-ART＆FASHION-2026-09-05.epub   FINANCE-2026-09-05.epub   Japan-2026-09-05.epub  …
-```
-另有每源的统计与单页 Web 管理界面。
+**author: cevtuo**
 
-## 阅读体验(连续流 + 顶部窄条)
+项目主页：https://cevtuocjw.github.io/CEVTUO-RWP2EPUB/
 
-- 每个分类一本。打开即读:封面 →「今日源目录」→ 文章按 源→时间 连续排列,直接翻页不停顿。
-- 每篇文章顶部有一行**极窄的导航条**:
-  `‹上篇 | ☰目录 | 下篇›  ·  ‹上一源:xxx | 下一源:xxx›  ·  源列表 ↺`
-- 「☰ 目录 / 源列表 ↺」回到最前面的「今日源目录」页,那里列出了每个源并可一键跳过去;
-  设备自带的 TOC(分类)也可用,但阅读并不依赖它。
+---
 
-## 全文获取(合法途径,分四层 + 外接 + 兜底)
+## 下载
 
-正文逐层尝试,每篇在统计与界面上标注它来自哪一层:
-
-| 层 | 方式 | 标注 |
+| 平台 | 文件 | 说明 |
 |---|---|---|
-| L0 | RSS 自带全文(Substack 等) | `feed_full` |
-| L1 | 文章公开页正文(trafilatura) | `public` |
-| L2 | 站点公开的 AMP/打印页 | `amp_print` |
-| L3 | **你自己的订阅 Cookie** 会话 | `cookie` |
-| 外接 | `fulltext.ext.cmd` 指向你自己的工具 | `ext` |
-| 兜底 | 仅 RSS 摘要 / 取不到 | `partial` / `blocked` |
+| macOS | `CEVTUO-RWP2EPUB-macOS.dmg` | Apple Silicon · 约 100 MB |
+| Windows | `CEVTUO-RWP2EPUB-windows.zip` | Windows 10/11 x64 · 约 37 MB |
 
-> ⚠️ 说明:本项目不做“破解”式绕过付费墙(不会伪装爬虫/注入破解脚本)。
-> 对你**确实订阅了**的站点(FT、Bloomberg、Economist…),最可靠的做法是给该域名提供
-> 你的 Cookie:把浏览器里该站的登录 Cookie 导成 Netscape 格式
-> (`cookies.txt`,或用 EditThisCookie 等导出),在 `config.json` 里按域名指向它,
-> 管道就会用你的会话抓全文。仍取不到的篇目会被标成“仅摘要/未取得”,在界面里如实统计,
-> 正文中也会标注“(此篇仅摘要)”。
+在 [Releases](../../releases/latest) 页下载。
 
-### 用"日常 Chrome 登录态"渲染正文(对付 NYT/Bloomberg/Le Monde/Economist 的反爬)
+> **macOS 首次打开**：ad-hoc 签名，未经 Apple 公证，会被 Gatekeeper 拦。请**右键 → 打开**，
+> 或执行 `xattr -dr com.apple.quarantine /Applications/CEVTUO-RWP2EPUB.app`。
+>
+> **Windows**：解压后双击 `CEVTUO-RWP2EPUB.cmd`。
 
-这几个站对纯 HTTP 直接 403/402,连 Cookie 都过不去,必须真实浏览器渲染。
-做法(纯你的登录会话,不涉及任何破解扩展):
+**安装包自带 Python 运行时和全部依赖** —— 目标机器不需要装 Python、不需要 pip、不需要 venv。
 
-1. 双击 **`启用Chrome调试端口.command`** —— 它会重启你的 Chrome 并开启本地调试口 9222;
-2. 保持这个 Chrome 开着(你正常上网即可);重启电脑后记得再双击一次;
-3. `config.json` 里已开启 `"browser":{"enabled":true,"port":9222}`;
-4. 在管理界面点「生成/刷新今天」,引擎会对配置了 Cookie 的域名自动用你的 Chrome 渲染取正文(标注 `browser/Chrome`)。
+---
 
-> Chrome 没开调试口时该层会自动跳过、不报错,退回公开抓取/摘要。
+## 功能
 
-可自行添加或者更换修改自己的rss实例。
-已打包我的日常关注rss进入扩展作为默认例子
+### CEVTUO合集坊
+一个合集 = 一本电子书，每篇文章 = 一个章节。
 
-### config.json 结构示例
+- **多个网址** —— 一行一个，批量抓取
+- **网站内链接** —— 给一个站点，列出页面里的链接或 `sitemap.xml`，勾选后批量导入
+- **RSS 订阅** —— 给一个 feed，列出条目勾选导入
+- **Markdown** —— 用 `# 一级标题` 分篇
+- **章节管理** —— 排序、删除、空白页、随时从网址补一页
+- **逐页查看与编辑** —— 预览 / 所见即所得 / HTML 源码三种模式
+- **导出 EPUB** —— 封面、作者、语言、前言目录、图片内嵌
+- **没有页数限制**
 
-```jsonc
-{
-  "smtp": { "host": "smtp.qq.com", "port": 465,
-            "user": "你的邮箱", "password": "授权码" },
-  "mail": { "to": "xxx@kindle.com" },
-  "cookies": {                       // 你有权限的站点 Cookie(Netscape 格式)
-    "ft.com":       "/Users/你/Downloads/ft_cookies.txt",
-    "economist.com":"/Users/你/Downloads/eco_cookies.txt"
-  },
-  "fulltext": {                       // 可选外接命令(把 URL 追加在命令后,stdout 返回正文)
-    "ext": { "enabled": false, "cmd": ["/path/to/你的/脚本"] }
-  }
-}
-```
-`cookies.txt` 示例(Netscape):
-```
-# Netscape HTTP Cookie File
-.ft.com	TRUE	/	FALSE	1728xxxx	sid	abcdef123456
-```
-把 `config.json.example` 复制为 `config.json` 后修改即可。Cookie 会按域名后缀自动匹配。
+### Rssdailyepub
+- 一键生成每日书，选几天内、每源几条、哪些分类，全程有进度
+- 定时：每天 / 每隔两天 / 每隔三天 / 取消，时间可改
+- RSS 源管理：分类与源的增删改、导入 OPML
 
-## 一次性准备
+> 可自行添加或者更换修改自己的 rss 实例。
+> 已打包我的日常关注 rss 进入扩展作为默认例子。
 
-```bash
-cd "/Users/cjw/Library/Application Support/RSSDailyEpub"
-uv sync
-```
+### rssdailyepub书库
+- 合集电子书按合集分文件夹
+- 每日书按日期分文件夹，点进去看当天的每一本
+- **书库位置可改**，改的时候已生成的书会一起搬过去
 
-## 手动运行
+---
 
-```bash
-./run_daily.sh
-# 或细分:
-./.venv/bin/python rss2epub.py --category FINANCE
-./.venv/bin/python rss2epub.py --no-fulltext     # 全站只用摘要(极快)
-```
+## 全文获取是怎么做到的
 
-## 每天定时(本机 launchd,每天 08:00,已装好)
+程序会**复制一份你自己浏览器的 profile**（连同你装好的扩展和登录态），用这份副本启动一个带调试端口的浏览器，通过 CDP 打开页面、等 JavaScript 渲染完、读回 DOM。
+
+这样做而不是用普通 HTTP 抓取，是因为：
+
+- 很多站点的正文要靠 JavaScript 才出现
+- 你如果装了任何解锁 / 增强类扩展，那是**扩展在浏览器里当场起作用**的，导出几个 Cookie 复制不了这个效果
+- Chrome 136 起禁止对默认用户目录开调试端口，必须换一个 user-data-dir
+
+支持自动探测：**Chrome / Edge / Brave / Arc / Vivaldi / Chromium / Opera**。
+
+正文抽取走三级兜底：trafilatura → 最大文本块 → 整页 body，保证永远有东西可读。
+
+---
+
+## 从源码运行
 
 ```bash
-launchctl list | grep rssdaily          # 查看
-launchctl unload ~/Library/LaunchAgents/com.rssdaily.epub.plist   # 停
-# 重装: cp com.rssdaily.epub.plist ~/Library/LaunchAgents/ && launchctl load ...
+python3 -m venv .venv && source .venv/bin/activate
+pip install feedparser ebooklib trafilatura requests pillow websocket-client
+python ui/server.py --open
 ```
 
-## Web 管理界面
+macOS 原生窗口外壳是 `main.swift`（需要 Xcode 命令行工具）：
 
 ```bash
-# 方式一:双击「启动管理器.command」
-# 方式二:双击 RSSPublisher.app(会自开浏览器)
-# 方式三:
-./.venv/bin/python ui/app.py --open
-# 打开 http://127.0.0.1:8611
+swiftc -O -target arm64-apple-macosx11.0 -o main main.swift -framework Cocoa -framework WebKit
 ```
 
-界面提供:
-- 日期切换(历史每一天的书)
-- 一键「生成今天」(后台跑,进度条+日志实时刷新)
-- 每分类/每源统计(用**折叠面板/手风琴**呈现):收录篇数、**全文几篇 / 仅摘要几篇 / 未取得几篇**,
-  展开看每篇标注与原文链接
-- 每本书「打开位置 / 打开阅读」
+## 构建
 
-## 常用参数
+- **macOS**：`.app` 里放 `python/`（可搬运的 CPython）+ `pylibs/`（依赖）+ 源码，
+  `codesign --force --deep --sign -` 后 `hdiutil create` 成 DMG
+- **Windows**：见 `ci/build-windows.yml`。Windows 包**必须在 Windows 上构建或用交叉解析**——
+  Python 运行时与 lxml / Pillow 都是平台相关的二进制
 
-| 参数 | 默认 | 说明 |
-| --- | --- | --- |
-| `--category` | 全部 | 只处理某些分类 |
-| `--hours` | 24 | 收录窗口(小时) |
-| `--max-per-feed` | 15 | 每源最多收录条数 |
-| `--no-fulltext` | 关 | 不做全文抓取,只用摘要 |
-| `--no-images` | 关 | 不下载内嵌图片 |
-| `--max-images` | 600 | 全运行图片总数上限(每张已自动压到 ~1400px/约200KB 内) |
-| `--send-email` | 关 | 生成合并本并发邮件 |
-| `--workers`/`--timeout` | 8/25 | 抓取并发与超时 |
+## 目录
 
-## 数据与日志
+| 文件 | 作用 |
+|---|---|
+| `capture.py` | 核心：浏览器 profile 副本 + CDP 渲染 |
+| `extract_page.py` | 网页 → 正文 / 链接 / sitemap / Markdown |
+| `export_epub.py` | 合集 → EPUB |
+| `imports.py` | 四条导入流水线 |
+| `store.py` `paths.py` | 数据层与目录解析（程序目录 / 数据目录分离） |
+| `jobs.py` `scheduler.py` | 任务进度与定时 |
+| `rss2epub.py` `fulltext.py` | RSS 连续流引擎与四层全文策略 |
+| `ui/` | 界面与接口 |
 
-- `output/YYYY-MM-DD/` 生成的 epub
-- `history/YYYY-MM-DD.json` 当日统计(每分类→每源→每篇模式)
-- `state/seen.txt` 去重(自动清理 45 天前);`state/progress.json` 运行进度
-- `logs/run.log` 定时运行、`logs/ui_run.log` 界面触发、`logs/rss2epub.log` 手动运行
+## 数据位置
 
-## 注意
+- macOS：`~/Library/Application Support/CEVTUO-RWP2EPUB`
+- Windows：`%LOCALAPPDATA%\CEVTUO-RWP2EPUB`
 
-- 每天 08:00 跑,收录的是**过去 24 小时**更新(前晚内容不漏)。同一天重复跑会覆盖当天同名 epub。
-- 图片过多导致 Kindle 邮件被拒时,减小 `--max-per-feed` 或加 `--no-images`。
-- 个别源(rsshub 公共实例 403、停更源)抓取失败只记 warning,不影响其它源。
-- 增删订阅请改 `feeds.opml`。
+里面有 `output/`（每日书）、`books/`（合集导出）、`history/`、`state/`、`logs/`。
+
+---
+
+## 已知限制
+
+- **Windows 版的定时功能暂不可用**。macOS 用 launchd，Windows 需要另接计划任务；
+  界面上的「一键生成」在两个平台都正常。
+- macOS 包只有 **arm64**（Apple Silicon），没有 Intel 版本。
+- 渲染需要一个 Chromium 内核的浏览器。Windows 10/11 自带 Edge，macOS 需要自行安装
+  Chrome / Edge / Brave 之一。
+- Windows 包在本机无法测试，如有问题请提 Issue。
