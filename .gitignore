@@ -18,3 +18,4 @@ cookies/
 # 安装包走 Release 附件,不进 git(GitHub 超 50MB 会警告)
 /dist/*.dmg
 /dist/*.zip
+winbuild/

@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>CEVTUO-RWP2EPUB — 网页 / RSS 变成电子书</title>
-<meta name="description" content="把网页、网站内链接、RSS 订阅和 Markdown 做成 EPUB 电子书。原生桌面应用，自带运行时，开箱即用。"/>
+<title>CEVTUO-RWP2EPUB — Turn web pages and RSS into ebooks</title>
+<meta name="description" content="Turn web pages, site links, RSS feeds and Markdown into EPUB ebooks. Native desktop app, bundled runtime, ready out of the box."/>
 <link rel="icon" href="logo.png"/>
 <style>
   :root{
@@ -25,10 +25,9 @@
   *{box-sizing:border-box}
   body{
     margin:0;min-height:100vh;color:var(--ink);
-    font:16px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+    font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Arial,sans-serif;
     background:var(--bg1);overflow-x:hidden;
   }
-  /* 流动光效 —— 玻璃面板要透出变化才像玻璃 */
   .aurora{position:fixed;inset:-20%;z-index:0;filter:blur(90px);pointer-events:none}
   .aurora i{position:absolute;display:block;border-radius:50%;opacity:.4}
   .aurora .a{width:44vw;height:44vw;left:-6%;top:-4%;background:#5b8cff;animation:d1 34s var(--ease) infinite alternate}
@@ -51,15 +50,13 @@
   .wrap{position:relative;z-index:1;max-width:960px;margin:0 auto;padding:56px 22px 0;
     display:flex;flex-direction:column;min-height:100vh}
 
-  /* ---------- 头部 ---------- */
   header{text-align:center;padding:44px 26px 40px}
   header img{width:132px;height:132px;filter:drop-shadow(0 8px 20px rgba(30,44,70,.34))}
   h1{font-size:clamp(28px,4.6vw,44px);margin:18px 0 6px;letter-spacing:-.5px;font-weight:750}
-  .sub{font-size:17px;color:var(--soft);margin:0 auto;max-width:620px}
+  .sub{font-size:17px;color:var(--soft);margin:0 auto;max-width:640px}
   .byline{margin-top:12px;font-size:13.5px;color:var(--faint)}
   .byline b{color:var(--soft);font-weight:600}
 
-  /* ---------- 下载按钮 ---------- */
   .dl{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin:34px 0 10px}
   .btn{
     display:flex;align-items:center;gap:13px;padding:15px 26px;min-width:236px;
@@ -83,11 +80,11 @@
     box-shadow:0 12px 34px color-mix(in srgb,var(--accent) 40%,transparent), inset 0 1px 0 rgba(255,255,255,.35);
   }
   .btn.primary .tx small{color:rgba(255,255,255,.8)}
-  .note{font-size:12.5px;color:var(--faint);text-align:center;margin:14px 0 0}
+  .note{font-size:12.5px;color:var(--faint);text-align:center;margin:14px 0 0;line-height:1.8}
   .note code{background:rgba(var(--panel),.6);padding:2px 7px;border-radius:6px;
     border:1px solid var(--line2);font-size:12px}
+  .note .zh{color:var(--soft)}
 
-  /* ---------- 功能 ---------- */
   .features{display:grid;grid-template-columns:repeat(auto-fit,minmax(258px,1fr));
     gap:16px;margin:44px 0 0}
   .feat{padding:22px 24px;border-radius:22px;
@@ -98,7 +95,6 @@
   .feat h3{margin:0 0 7px;font-size:15.5px;font-weight:660}
   .feat p{margin:0;font-size:14px;color:var(--soft)}
 
-  /* ---------- 页脚 ---------- */
   footer{margin-top:auto;padding:70px 0 44px;text-align:center}
   footer img{width:78px;height:78px;filter:drop-shadow(0 6px 16px rgba(30,44,70,.3));margin-bottom:16px}
   .wordmark{font-size:19px;font-weight:700;letter-spacing:3.5px;color:var(--ink);margin:0}
@@ -115,23 +111,23 @@
   <header class="glass">
     <img src="logo.png" alt="CEVTUO-RWP2EPUB"/>
     <h1>CEVTUO-RWP2EPUB</h1>
-    <p class="sub">把网页、网站内链接、RSS 订阅和 Markdown 做成 EPUB 电子书。<br/>
-      原生桌面应用,自带运行时,下载即用。</p>
+    <p class="sub">Turn web pages, in-site links, RSS feeds and Markdown into EPUB ebooks.<br/>
+      A native desktop app with its runtime bundled in — download and run.</p>
     <p class="byline">author: <b>cevtuo</b></p>
 
     <div class="dl">
       <a class="btn primary" href="https://github.com/cevtuocjw/CEVTUO-RWP2EPUB/releases/latest/download/CEVTUO-RWP2EPUB-macOS.dmg">
         <span class="ico"></span>
-        <span class="tx"><b>下载 macOS 版</b><small>.dmg · Apple Silicon · 约 100 MB</small></span>
+        <span class="tx"><b>Download for macOS</b><small>.dmg · Apple Silicon · ~100 MB</small></span>
       </a>
       <a class="btn" href="https://github.com/cevtuocjw/CEVTUO-RWP2EPUB/releases/latest/download/CEVTUO-RWP2EPUB-windows.zip">
         <span class="ico">⊞</span>
-        <span class="tx"><b>下载 Windows 版</b><small>.zip · Windows 10/11 · 约 100 MB</small></span>
+        <span class="tx"><b>Download for Windows</b><small>.zip · Windows 10/11 x64 · ~100 MB</small></span>
       </a>
     </div>
 
     <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line2)">
-      <div style="font-size:12.5px;color:var(--faint);margin-bottom:9px">大陆网络直连 GitHub 可能很慢,可用下面的加速镜像(内容与官方完全相同)</div>
+      <div style="font-size:12.5px;color:var(--faint);margin-bottom:9px">Direct downloads from GitHub can be slow in mainland China — use a mirror below (identical content)</div>
       <div style="display:flex;gap:9px;justify-content:center;flex-wrap:wrap">
         <a class="btn" style="min-width:auto;padding:9px 15px" href="https://ghproxy.net/https://github.com/cevtuocjw/CEVTUO-RWP2EPUB/releases/latest/download/CEVTUO-RWP2EPUB-macOS.dmg"><span class="tx"><b style="font-size:13.5px">macOS · ghproxy.net</b></span></a>
         <a class="btn" style="min-width:auto;padding:9px 15px" href="https://gh-proxy.com/https://github.com/cevtuocjw/CEVTUO-RWP2EPUB/releases/latest/download/CEVTUO-RWP2EPUB-macOS.dmg"><span class="tx"><b style="font-size:13.5px">macOS · gh-proxy.com</b></span></a>
@@ -140,34 +136,38 @@
       </div>
     </div>
 
-    <p class="note">macOS 首次打开请<b>右键 → 打开</b>(ad-hoc 签名,未经 Apple 公证)<br/>
-      镜像为第三方公共转发服务,只是把 GitHub 的流量中转一下;介意的话请用上面官方直连</p>
+    <p class="note">
+      <b>macOS first launch: right-click → Open</b> (ad-hoc signed, not notarized by Apple)<br/>
+      <span class="zh">macOS 首次打开请<b>右键 → 打开</b>(ad-hoc 签名,未经 Apple 公证)</span><br/><br/>
+      Mirrors are third-party public relays that simply forward GitHub traffic. Use the official links above if you prefer.<br/>
+      <span class="zh">镜像为第三方公共转发服务,只是把 GitHub 的流量中转一下;介意的话请用上面官方直连</span>
+    </p>
   </header>
 
   <section class="features">
     <div class="feat">
-      <h3>多条路都能成书</h3>
-      <p>多个网址、网站内链接、RSS 订阅、Markdown —— 每篇文章就是一个章节,可单独查看与编辑。</p>
+      <h3>Four ways in</h3>
+      <p>Multiple URLs, links found on a site, RSS feeds, or Markdown. Every article becomes a chapter you can open and edit on its own.</p>
     </div>
     <div class="feat">
-      <h3>真正的全文</h3>
-      <p>用你自己的浏览器渲染页面再取正文,靠 JavaScript 才显示的内容、存档站页面都能拿到完整全文。</p>
+      <h3>Real full text</h3>
+      <p>Pages are rendered in your own browser before extraction, so JavaScript-only content and archived pages come through complete.</p>
     </div>
     <div class="feat">
-      <h3>RSS 每日成书</h3>
-      <p>按分类自动成书,可设每天 / 每隔两三天定时生成,书库里按日期归档。</p>
+      <h3>Daily books from RSS</h3>
+      <p>Build a book per category automatically, on a daily or every-few-days schedule, filed by date in the library.</p>
     </div>
     <div class="feat">
-      <h3>没有页数限制</h3>
-      <p>导出多少章都可以,不做任何截断。</p>
+      <h3>No page limit</h3>
+      <p>Export as many chapters as you like. Nothing gets truncated.</p>
     </div>
     <div class="feat">
-      <h3>自带运行环境</h3>
-      <p>Python 运行时与全部依赖都在安装包里,目标机器不需要装任何东西。</p>
+      <h3>Runtime included</h3>
+      <p>The Python runtime and every dependency ship inside the installer. The target machine needs nothing installed.</p>
     </div>
     <div class="feat">
-      <h3>书库位置随你放</h3>
-      <p>可以改书库文件夹,已有的书会跟着一起搬过去。</p>
+      <h3>Library wherever you want</h3>
+      <p>Point the library folder anywhere; books you already generated move along with it.</p>
     </div>
   </section>
 
