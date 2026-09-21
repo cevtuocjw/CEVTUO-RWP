@@ -119,6 +119,15 @@
   .install code{background:rgba(var(--panel),.7);padding:2px 7px;border-radius:6px;
     border:1px solid var(--line2);font-size:12.5px}
 
+  /* 启动说明小卡片 */
+  .launch{margin-top:16px;padding:15px 17px;border-radius:14px;
+    background:rgba(var(--panel),.42);border:1px solid var(--line2)}
+  .launch>b{display:block;font-size:13.5px;color:var(--ink);margin-bottom:8px}
+  .launch p{margin:0 0 9px;font-size:13.5px;color:var(--soft)}
+  .launch ul{margin:8px 0 0;padding-left:17px;list-style:disc}
+  .launch ul li{margin-bottom:6px;font-size:13px;color:var(--soft);line-height:1.65}
+  .launch ul li b{color:var(--ink)}
+
   footer{margin-top:auto;padding:70px 0 44px;text-align:center}
   footer img{width:78px;height:78px;filter:drop-shadow(0 6px 16px rgba(30,44,70,.3));margin-bottom:16px}
   .wordmark{font-size:19px;font-weight:700;letter-spacing:3.5px;color:var(--ink);margin:0}
@@ -251,9 +260,44 @@
           <li>If Windows shows <i>“Windows protected your PC”</i>, click <b>More info → Run anyway</b>.
             <div class="zh">若弹出“Windows 已保护你的电脑”,点 <b>更多信息 → 仍要运行</b>。</div></li>
         </ol>
-        <p class="tiny">A window opens by itself. No Python, no dependencies to install —
-          the runtime ships inside the zip.
-          <span class="zh">会自己弹出一个独立窗口。不需要装 Python,不需要装任何依赖,运行时都在压缩包里。</span></p>
+        <div class="launch">
+          <b>How to launch</b>
+          <p>There is <b>no <code>.exe</code> to install</b> and no installer to run.
+            The entry point is <code>CEVTUO-RWP2EPUB.cmd</code> inside the folder you just
+            extracted — <b>double-click it</b> and the app window opens by itself. That is
+            the one and only thing you need to click.</p>
+          <ul>
+            <li><b>Keep the folder together.</b> <code>.cmd</code> loads the
+              <code>python\</code> and <code>pylibs\</code> folders sitting next to it.
+              Copying the <code>.cmd</code> out on its own will not work.</li>
+            <li><b>Want it on your desktop?</b> Right-click
+              <code>CEVTUO-RWP2EPUB.cmd</code> → <b>Send to → Desktop (create shortcut)</b>.</li>
+            <li><b>Closing the window leaves the local service running</b>, which is why
+              opening the app again is instant. It only listens on <code>127.0.0.1</code> —
+              nothing is sent anywhere. To shut it down completely, double-click
+              <code>停止服务.cmd</code> (Stop service).</li>
+            <li>Books are saved to <code>%LOCALAPPDATA%\CEVTUO-RWP2EPUB</code>.</li>
+            <li>Pages are rendered with a Chromium browser. Windows ships with Edge, so
+              there is nothing extra to install.</li>
+            <li>Python and every dependency are already inside the folder — you do not
+              need to install anything.</li>
+          </ul>
+          <div class="zh">
+            <b>怎么启动</b><br/>
+            这个包<b>没有 .exe 安装程序</b>,也不需要安装。启动入口就是你刚解压出来的文件夹里的
+            <b><code>CEVTUO-RWP2EPUB.cmd</code></b> —— <b>双击它</b>,应用窗口会自己弹出来。
+            要点的就这一个文件。<br/>
+            · <b>整个文件夹要放在一起</b>:<code>.cmd</code> 需要它旁边的 <code>python\</code> 和
+            <code>pylibs\</code>,单独把 .cmd 拷走是用不了的。<br/>
+            · 想放桌面:右键 <code>CEVTUO-RWP2EPUB.cmd</code> → <b>发送到 → 桌面快捷方式</b>。<br/>
+            · <b>关掉窗口后本地服务仍在后台运行</b>,所以再次打开是秒开。它只监听
+            <code>127.0.0.1</code>,不会把任何东西发到外面。要彻底关掉,双击
+            <code>停止服务.cmd</code>。<br/>
+            · 书保存在 <code>%LOCALAPPDATA%\CEVTUO-RWP2EPUB</code>。<br/>
+            · 渲染网页用 Chromium 内核浏览器,Windows 自带 Edge,不用另外装。<br/>
+            · Python 和全部依赖都已经在文件夹里,<b>不需要你装任何东西</b>。
+          </div>
+        </div>
       </div>
 
     </div>
