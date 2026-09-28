@@ -19,3 +19,7 @@ cookies/
 /dist/*.dmg
 /dist/*.zip
 winbuild/
+
+# usersite 是 cevtuocjw.github.io 的独立克隆,内含自己的 .git
+# ⚠️ 嵌套 git 仓库会让 GitHub Pages 构建直接失败(Page build failed, duration 0)
+usersite/
