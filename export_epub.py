@@ -181,7 +181,7 @@ def build(collection, articles, out_path, opts=None, on_progress=None):
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     title = collection.get("title") or "未命名合集"
-    author = collection.get("author") or "CEVTUO-RWP2EPUB"
+    author = collection.get("author") or "CEVTUO-RWP"
     lang = collection.get("language_code") or "zh-CN"
 
     usable = [a for a in articles if (a.get("parsed_html") or "").strip()]
@@ -246,20 +246,20 @@ def build(collection, articles, out_path, opts=None, on_progress=None):
         book.add_item(epub.EpubImage(uid=uid, file_name=fn, media_type=mt,
                                      content=blob))
 
+    # 扉页 —— 只放标题,不再内嵌一份目录。
+    # 早先这里既生成扉页里的 <ol> 目录、又让 ebooklib 生成 nav 目录,
+    # 阅读器里就会出现「两次目录」。现在只保留 nav 那一份。
     if not opts.get("remove_preface", False):
         preface = epub.EpubHtml(uid="preface", file_name="preface.xhtml",
-                                title="目录")
-        items = "".join(
-            f'<li><a href="ch{i}.xhtml">{_esc(a.get("title") or "未命名")}</a></li>'
-            for i, a in enumerate(usable))
-        preface.content = _xhtml("目录", (
+                                title="扉页")
+        preface.content = _xhtml("扉页", (
             f'<div class="titlepage"><h1>{_esc(title)}</h1>'
             f'<p>{_esc(author)}</p>'
-            f'<p>{len(usable)} 篇 · 由 CEVTUO-RWP2EPUB 制作</p></div>'
-            f'<h2>目录</h2><ol>{items}</ol>'))
+            f'<p>{len(usable)} 篇 · 由 CEVTUO-RWP 制作</p></div>'))
         book.add_item(style(preface))
         spine.insert(0, preface)
 
+    # 唯一的目录:交给 ebooklib 的 nav(ncx 供老设备)
     book.toc = tuple(chapters)
     book.spine = ["nav"] + spine
     book.add_item(epub.EpubNcx())
@@ -270,7 +270,7 @@ def build(collection, articles, out_path, opts=None, on_progress=None):
 
 
 def build_linear(book_title, date_str, sections, images, out_path,
-                 author="CEVTUO-RWP2EPUB"):
+                 author="CEVTUO-RWP"):
     """RSS 连续流书(复用 rss2epub.LinearBook 的版式)。"""
     import rss2epub
     lb = rss2epub.LinearBook(book_title, date_str, sections, images)

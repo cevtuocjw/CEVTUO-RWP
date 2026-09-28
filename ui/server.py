@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""CEVTUO-RWP2EPUB —— 统一 Web 界面服务端。
+"""CEVTUO-RWP —— 统一 Web 界面服务端。
 
 A. CEVTUO合集坊(对标 EpubKit):多个网址 / 网站内链接 / RSS / Markdown 导入,
    章节管理、逐页查看与编辑、导出 EPUB(无 10 页限制)
@@ -12,6 +12,7 @@ import argparse
 import base64
 import glob
 import json
+import logging
 import mimetypes
 import os
 import re
@@ -40,8 +41,21 @@ import store            # noqa: E402
 import paths            # noqa: E402
 
 BASE = paths.ensure()                     # 数据目录(可写):DB/输出/日志/历史
+
 OPML_PATH = paths.seed("feeds.opml")      # 首次运行从程序自带的那份播种过来
 PORT = 8611
+
+# 软件自己的版本号。
+# ⚠️ 以前设置页那行「版本」显示的是 capture.status()["version"],那是 **Chrome 的版本**,
+# 不是本软件的。label 写的确实是「浏览器版本」,但用户看到的就一个版本号,
+# 会当成软件版本 —— 加这一行区分开。
+APP_VERSION = "1.1"
+
+# ⚠️ 这个名字不能叫 log —— 下面几行就有一个 def log(*a)。
+# 叫 log 的话会被那个函数覆盖,而 AttributeError 出现在两个很难查的地方:
+#   · _delete_book 结尾 —— 文件**已经删掉了**才抛,于是接口回报失败、文件其实没了
+#   · _write_index 里   —— 异常被 except 吞掉,索引永远写不进去且完全没提示
+slog = logging.getLogger("server")
 
 
 def log(*a):
@@ -105,17 +119,116 @@ def snapshot(d: Path):
 
 
 # ------------------------------------------------------------------ 书库 -----
-def library():
-    """书库:合集书 + Rssdailyepub 生成的书(按日期成文件夹)。"""
+# 合集电子书**平铺**在 books/ 下,不再一个合集一个文件夹。
+# 原来 20 个合集就是 20 个各装一两本书的文件夹,在访达里翻起来很烦。
+#
+# 平铺之后「这个 epub 属于哪个合集」不能靠文件名猜 —— 合集标题可以互为前缀
+# (「科技」和「科技日报」),sanitize 还会把 / : 换掉。所以用一个**点开头**的
+# 索引文件记录归属。macOS 访达默认不显示点文件,用户只会看到一堆 epub。
+BOOK_INDEX = ".cevtuo-index.json"
+
+
+def _index_path():
+    return store.books_dir() / BOOK_INDEX
+
+
+def _read_index():
+    try:
+        d = json.loads(_index_path().read_text("utf-8"))
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def _write_index(d):
+    try:
+        p = _index_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(d, ensure_ascii=False, indent=1), "utf-8")
+    except Exception as e:
+        slog.warning("写书库索引失败: %s", e)
+
+
+def _register_book(path: Path, cid):
+    d = _read_index()
+    d[path.name] = {"cid": cid, "at": time.strftime("%Y-%m-%d %H:%M:%S")}
+    _write_index(d)
+
+
+def _unique_path(d: Path, name: str) -> Path:
+    """同名就加序号 —— 平铺之后两个同名合集在同一分钟导出会撞名。"""
+    p = d / name
+    if not p.exists():
+        return p
+    stem, suf = p.stem, p.suffix
+    for i in range(2, 100):
+        p = d / f"{stem}-{i}{suf}"
+        if not p.exists():
+            return p
+    return d / f"{stem}-{int(time.time())}{suf}"
+
+
+def _delete_books_of(cid):
+    """删合集时把它生成过的 epub 一起删掉。
+
+    ⚠️ 只删**索引里明确记着属于它**的,以及老结构 books/<id>/ 里的。
+    不做「按标题前缀删」—— 合集标题互为前缀时那会误删隔壁合集的书。
+    """
     bdir = store.books_dir()
-    colls = []
-    for c in store.list_collections():
-        d = bdir / c["id"]
-        books = [file_info(p) for p in sorted(d.glob("*.epub"),
-                                              key=lambda p: p.stat().st_mtime,
-                                              reverse=True)] if d.exists() else []
-        c["books"] = books
-        colls.append(c)
+    idx = _read_index()
+    gone = []
+    for name, rec in list(idx.items()):
+        if not isinstance(rec, dict) or rec.get("cid") != cid:
+            continue
+        p = bdir / name
+        try:
+            if p.exists():
+                p.unlink()
+                gone.append(str(p))
+        except Exception as e:
+            slog.warning("删书失败 %s: %s", p, e)
+        idx.pop(name, None)
+    _write_index(idx)
+    d = bdir / cid                       # 老结构
+    if d.is_dir():
+        gone += [str(p) for p in d.glob("*.epub")]
+        shutil.rmtree(d, ignore_errors=True)
+    return gone
+
+
+def library():
+    """书库:合集书(平铺)+ Rssdailyepub 生成的书(按日期成文件夹)。"""
+    bdir = store.books_dir()
+    colls = {c["id"]: c for c in store.list_collections()}
+    for c in colls.values():
+        c["books"] = []
+    idx = _read_index()
+    strip = {cid: sanitize_filename(c["title"]) for cid, c in colls.items()}
+    by_prefix = sorted(colls.values(), key=lambda c: -len(strip[c["id"]]))
+    orphan = []
+
+    def owner(p: Path):
+        rec = idx.get(p.name)
+        if isinstance(rec, dict) and rec.get("cid") in colls:
+            return colls[rec["cid"]]
+        # 索引对不上(用户手动搬过文件、或老版本留下的)—— 退回按标题前缀认
+        for c in by_prefix:
+            t = strip[c["id"]]
+            if t and p.name.startswith(t + "-"):
+                return c
+        return None
+
+    if bdir.exists():
+        for p in sorted(bdir.glob("*.epub"),
+                        key=lambda p: p.stat().st_mtime, reverse=True):
+            c = owner(p)
+            (c["books"] if c else orphan).append(file_info(p))
+        for c in colls.values():         # 老结构:books/<合集id>/*.epub,保留可见
+            d = bdir / c["id"]
+            if d.is_dir():
+                c["books"] += [file_info(p) for p in sorted(
+                    d.glob("*.epub"), key=lambda p: p.stat().st_mtime,
+                    reverse=True)]
 
     rss = []
     out = store.output_dir()
@@ -128,7 +241,7 @@ def library():
             rss.append({"date": day.name, "path": str(day),
                         "count": len(books), "books": books,
                         "total_size": sum(b["size"] for b in books)})
-    return {"collections": colls, "rss": rss,
+    return {"collections": list(colls.values()), "rss": rss, "orphan": orphan,
             "books_dir": str(bdir), "output_dir": str(out),
             "lib_dir": str(store.lib_dir())}
 
@@ -186,10 +299,11 @@ def do_export(ctx, cid, opts):
     arts = store.list_articles(cid, with_body=True)
     if not arts:
         raise RuntimeError("empty-collection:合集里还没有文章")
-    d = store.books_dir() / cid
+    # 平铺:直接放 books/ 下,不再给每个合集建子文件夹
+    d = store.books_dir()
     d.mkdir(parents=True, exist_ok=True)
     name = f"{sanitize_filename(coll['title'])}-{time.strftime('%Y%m%d-%H%M')}.epub"
-    out = d / name
+    out = _unique_path(d, name)
     ctx.log(f"导出「{coll['title']}」(共 {len(arts)} 章)")
     ctx.set_total(len(arts))
 
@@ -200,7 +314,8 @@ def do_export(ctx, cid, opts):
             ctx.progress(done, total)
 
     export_epub.build(coll, arts, out, opts, on_progress=prog)
-    return {"path": str(out), "name": name, "chapters": len(arts),
+    _register_book(out, cid)             # 平铺之后靠索引认归属
+    return {"path": str(out), "name": out.name, "chapters": len(arts),
             "size": out.stat().st_size}
 
 
@@ -262,6 +377,72 @@ def rss_generate_job(ctx, payload):
             "output_dir": str(out_dir)}
 
 
+# ------------------------------------------------------------- 在线封面 -----
+# 三个都不需要 API Key,互相当备份 —— 单个源经常坏或者查不到中文书。
+COVER_UA = {"User-Agent": "CEVTUO-RWP/1.1 (cover search)"}
+
+
+def _cover_from_google(q, n=8):
+    import requests
+    r = requests.get("https://www.googleapis.com/books/v1/volumes",
+                     params={"q": q, "maxResults": n}, headers=COVER_UA,
+                     timeout=12)
+    r.raise_for_status()
+    out = []
+    for it in (r.json().get("items") or []):
+        vi = it.get("volumeInfo") or {}
+        im = vi.get("imageLinks") or {}
+        u = im.get("thumbnail") or im.get("smallThumbnail")
+        if not u:
+            continue
+        u = u.replace("http://", "https://")          # 页面是 https,混用会被拦
+        out.append({"url": u.replace("&zoom=1", "&zoom=2"),
+                    "thumb": u, "title": vi.get("title") or "",
+                    "source": "Google Books"})
+    return out
+
+
+def _cover_from_openlibrary(q, n=8):
+    import requests
+    r = requests.get("https://openlibrary.org/search.json",
+                     params={"q": q, "limit": n,
+                             "fields": "title,cover_i,author_name"},
+                     headers=COVER_UA, timeout=12)
+    r.raise_for_status()
+    out = []
+    for d in (r.json().get("docs") or []):
+        ci = d.get("cover_i")
+        if not ci:
+            continue
+        out.append({"url": f"https://covers.openlibrary.org/b/id/{ci}-L.jpg",
+                    "thumb": f"https://covers.openlibrary.org/b/id/{ci}-M.jpg",
+                    "title": d.get("title") or "", "source": "Open Library"})
+    return out
+
+
+def _cover_from_commons(q, n=8):
+    import requests
+    r = requests.get("https://commons.wikimedia.org/w/api.php",
+                     params={"action": "query", "format": "json",
+                             "generator": "search", "gsrsearch": q,
+                             "gsrnamespace": "6", "gsrlimit": n,
+                             "prop": "imageinfo", "iiprop": "url",
+                             "iiurlwidth": "600"},
+                     headers=COVER_UA, timeout=12)
+    r.raise_for_status()
+    pages = ((r.json().get("query") or {}).get("pages") or {})
+    out = []
+    for p in pages.values():
+        ii = (p.get("imageinfo") or [{}])[0]
+        u = ii.get("thumburl") or ii.get("url")
+        if not u or not re.search(r"\.(jpe?g|png|webp)$",
+                                  u.split("?")[0], re.I):
+            continue
+        out.append({"url": u, "thumb": u, "source": "Wikimedia",
+                    "title": (p.get("title") or "").replace("File:", "")})
+    return out
+
+
 # ------------------------------------------------------------------ API ------
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -302,7 +483,8 @@ class Handler(BaseHTTPRequestHandler):
                               "output_dir": str(store.output_dir()),
                               "books_dir": str(store.books_dir()),
                               "base": str(BASE), "opml": str(OPML_PATH)},
-                    "app": "CEVTUO-RWP2EPUB",
+                    "app": "CEVTUO-RWP",
+                    "app_version": APP_VERSION,
                 })
             elif r == "/api/collections":
                 json_resp(self, {"collections": store.list_collections()})
@@ -317,6 +499,8 @@ class Handler(BaseHTTPRequestHandler):
                 json_resp(self, a or {"err": "not found"}, 200 if a else 404)
             elif r == "/api/library":
                 json_resp(self, library())
+            elif r == "/api/cover":
+                self._serve_cover(qs.get("id", [""])[0])
             elif r == "/api/rss/sources":
                 cats = opml.read(OPML_PATH)
                 json_resp(self, {
@@ -353,6 +537,42 @@ class Handler(BaseHTTPRequestHandler):
                 self._serve_static()
         except Exception as e:
             json_resp(self, {"err": str(e)}, 500)
+
+    def _delete_book(self, b):
+        """删一本书,连同磁盘上的文件。
+
+        ⚠️ 必须先确认这个路径真的落在书库/输出目录**里面** ——
+        否则一个 POST 就能删掉用户磁盘上任意一个文件(../../ 之类)。
+        resolve() 之后再比,符号链接和 .. 都挡得住。
+        """
+        raw = (b.get("path") or "").strip()
+        if not raw:
+            return {"ok": False, "err": "缺少路径"}
+        try:
+            p = Path(raw).expanduser().resolve()
+        except Exception as e:
+            return {"ok": False, "err": f"路径无效: {e}"}
+        roots = []
+        for r in (store.books_dir(), store.output_dir()):
+            try:
+                roots.append(r.resolve())
+            except Exception:
+                pass
+        if not any(p == r or r in p.parents for r in roots):
+            return {"ok": False, "err": "只能删除书库目录里的文件"}
+        if p.suffix.lower() != ".epub":
+            return {"ok": False, "err": "只能删除 .epub 文件"}
+        if not p.exists():
+            return {"ok": False, "err": "文件已经不在了,刷新看看"}
+        try:
+            p.unlink()
+        except Exception as e:
+            return {"ok": False, "err": f"删除失败: {e}"}
+        idx = _read_index()
+        if idx.pop(p.name, None) is not None:
+            _write_index(idx)
+        slog.info("已删除书籍 %s", p)
+        return {"ok": True, "removed": str(p)}
 
     def _fs_list(self, path):
         """给"选择文件夹"用的简易目录浏览。"""
@@ -415,13 +635,15 @@ class Handler(BaseHTTPRequestHandler):
                 b["id"], title=b.get("title"), author=b.get("author"),
                 language_code=b.get("language_code"))
         if r == "/api/collection/delete":
+            removed = _delete_books_of(b["id"])
             store.delete_collection(b["id"])
-            d = store.books_dir() / b["id"]
-            if d.exists():
-                shutil.rmtree(d, ignore_errors=True)
-            return {"ok": True}
+            return {"ok": True, "removed": removed}
         if r == "/api/collection/cover":
             return self._save_cover(b)
+        if r == "/api/cover/search":
+            return self._cover_search(b)
+        if r == "/api/collection/coverUrl":
+            return self._save_cover_url(b)
 
         # ---------------------------------------------------- 章节 ----
         if r == "/api/article/save":
@@ -447,8 +669,34 @@ class Handler(BaseHTTPRequestHandler):
                 return {"ok": False, "err": why}
             a = store.add_article(b["collectionId"], art["title"], art["content"],
                                   url=b["url"], source="manual",
-                                  mode=art["mode"])
+                                  mode=art["mode"], note=art.get("note") or "")
             return {"ok": True, "article": a}
+
+        # 「再次获取」—— 重新抓这一章的原文。任何一章都能点,不限于失败的。
+        if r == "/api/article/refetch":
+            a = store.get_article(b["id"])
+            if not a:
+                return {"ok": False, "err": "章节不存在"}
+            url = (b.get("url") or a.get("url") or "").strip()
+            if not url:
+                return {"ok": False, "err": "这一章没有原始网址,没法重新获取"}
+            art, why = imports.article_from_url(
+                url, use_chrome=b.get("useChrome", True))
+            if not art:
+                # ⚠️ 失败也要把原因写回去。只回一个 err 的话,弹窗关掉之后
+                # 那一行长得和上次一模一样,用户分不清是没跑还是又失败了。
+                store.update_article(a["id"], note=why)
+                return {"ok": False, "err": why,
+                        "article": store.get_article(a["id"])}
+            store.update_article(a["id"], title=art["title"],
+                                 parsed_html=art["content"], url=url,
+                                 mode=art["mode"], note=art.get("note") or "")
+            return {"ok": True, "article": store.get_article(a["id"]),
+                    "chars": art["text_len"], "via": art["via"]}
+
+        # 删一本书(书库右键)。同时把本地文件删掉。
+        if r == "/api/book/delete":
+            return self._delete_book(b)
 
         # ---------------------------------------------------- 导入 ----
         if r == "/api/import/urls":
@@ -593,6 +841,90 @@ class Handler(BaseHTTPRequestHandler):
 
         return {"ok": False, "err": f"未知接口 {r}"}
 
+    def _serve_cover(self, cid):
+        """按合集 id 把封面图发出去。
+
+        ⚠️ 必须走 HTTP,不能用 file://。界面是从 http://127.0.0.1:8611 加载的,
+        浏览器会把 http 页面里的 file:// 子资源**直接拦掉**。
+        表现就是「封面上传成功了、但显示不出来」—— 这个只有真的打开界面才看得见,
+        接口层面全是 200。
+        """
+        c = store.get_collection(cid)
+        cov = (c or {}).get("cover") or ""
+        if not cov:
+            self.send_error(404, "no cover")
+            return
+        p = Path(cov).expanduser()
+        if not p.is_file():
+            self.send_error(404, "cover missing")
+            return
+        try:
+            data = p.read_bytes()
+        except Exception as e:
+            slog.warning("读封面失败 %s: %s", p, e)
+            self.send_error(404, "cover unreadable")
+            return
+        ct = mimetypes.guess_type(p.name)[0] or "image/jpeg"
+        self.send_response(200)
+        self.send_header("Content-Type", ct)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")   # 换封面要立刻看见
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _cover_search(self, b):
+        """三个源都试一遍,能出几个算几个。"""
+        q = (b.get("q") or "").strip()
+        if not q:
+            return {"ok": False, "err": "先输入关键词", "results": []}
+        results, errs = [], []
+        for fn in (_cover_from_google, _cover_from_openlibrary,
+                   _cover_from_commons):
+            try:
+                results += fn(q)
+            except Exception as e:
+                errs.append(f"{fn.__name__.replace('_cover_from_', '')}: {e}")
+        seen, uniq = set(), []
+        for it in results:
+            if it["url"] in seen:
+                continue
+            seen.add(it["url"])
+            uniq.append(it)
+        if not uniq and errs:
+            # 三个源全挂 ≠ 没有结果。要分开告诉用户,不然会以为是关键词的问题
+            return {"ok": False, "err": "; ".join(errs)[:300], "results": []}
+        return {"ok": True, "results": uniq[:24], "errs": errs}
+
+    def _save_cover_url(self, b):
+        """把在线搜到的封面**下载下来存本地**。
+
+        ⚠️ 不把远程 URL 直接写进 cover 字段:界面是按 file:// 加载本地图的,
+        存 URL 的话对方一改防盗链、或者用户离线,封面就变成一片空白。
+        """
+        import requests
+        cid, url = b.get("id"), (b.get("url") or "").strip()
+        if not cid or not url.lower().startswith(("http://", "https://")):
+            return {"ok": False, "err": "封面地址无效"}
+        try:
+            r = requests.get(url, headers=COVER_UA, timeout=20)
+            r.raise_for_status()
+            data = r.content
+        except Exception as e:
+            return {"ok": False, "err": f"下载封面失败: {e}"}
+        if len(data) < 800:
+            return {"ok": False, "err": "这张图太小,可能不是封面"}
+        ct = (r.headers.get("Content-Type") or "").lower()
+        ext = ".png" if "png" in ct else ".webp" if "webp" in ct else ".jpg"
+        d = store.lib_dir() / "covers"
+        d.mkdir(parents=True, exist_ok=True)
+        p = d / f"{cid}{ext}"
+        try:
+            p.write_bytes(data)
+        except Exception as e:
+            return {"ok": False, "err": f"保存封面失败: {e}"}
+        store.update_collection(cid, cover=str(p))
+        return {"ok": True, "cover": str(p), "bytes": len(data)}
+
     def _save_cover(self, b):
         cid, data = b.get("id"), b.get("data_url") or ""
         if not cid or "," not in data:
@@ -611,7 +943,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="CEVTUO-RWP2EPUB 管理界面")
+    ap = argparse.ArgumentParser(description="CEVTUO-RWP 管理界面")
     ap.add_argument("--port", type=int, default=PORT)
     ap.add_argument("--open", action="store_true")
     args = ap.parse_args()
@@ -624,7 +956,7 @@ def main():
         if args.open:
             subprocess.Popen(["open", url])
         return
-    log(f"CEVTUO-RWP2EPUB 管理界面: {url}")
+    log(f"CEVTUO-RWP 管理界面: {url}")
     if args.open:
         threading.Timer(0.8, partial(subprocess.Popen, ["open", url])).start()
     try:

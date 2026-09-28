@@ -75,7 +75,15 @@ def clean_html(raw):
 
 
 def plain_len(html):
-    return len(re.sub(r"<[^>]+>", "", html or "").strip())
+    """字数 —— 直接委托给 store.plain_len,两边绝不能各写一套。
+
+    这里原来是自己写的一行 `len(re.sub(r"<[^>]+>", "", html).strip())`,
+    保留了 HTML 里的换行和缩进。而 store 那边是删空白。同一篇文章
+    一个数出 127、一个数出 109,章节列表和「正文仅 N 字」提示当场打架。
+    保留这一层只是为了不改调用方。
+    """
+    import store
+    return store.plain_len(html)
 
 
 def strip_tags(html):

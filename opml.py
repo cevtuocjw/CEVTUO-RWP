@@ -46,7 +46,7 @@ def read(path):
 def write(path, cats):
     root = ET.Element("opml", {"version": "2.0"})
     head = ET.SubElement(root, "head")
-    ET.SubElement(head, "title").text = "CEVTUO-RWP2EPUB 订阅源"
+    ET.SubElement(head, "title").text = "CEVTUO-RWP 订阅源"
     body = ET.SubElement(root, "body")
     for c in cats or []:
         feeds = c.get("feeds") or []

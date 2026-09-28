@@ -1,6 +1,6 @@
 @echo off
 rem ============================================================
-rem  Stop the CEVTUO-RWP2EPUB local service.
+rem  Stop the CEVTUO-RWP local service.
 rem
 rem  Closing the app window leaves the local service running in
 rem  the background (that is why reopening is instant).
@@ -13,7 +13,7 @@ rem ============================================================
 setlocal
 
 echo.
-echo   Stopping the CEVTUO-RWP2EPUB local service...
+echo   Stopping the CEVTUO-RWP local service...
 echo.
 
 powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*ui\server.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"

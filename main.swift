@@ -1,4 +1,4 @@
-// CEVTUO-RWP2EPUB —— 原生窗口外壳
+// CEVTUO-RWP —— 原生窗口外壳
 //
 // 早先的做法是 bash 启动器 + 在默认浏览器里开标签页,两个毛病:
 //   1) 可执行文件是一个永不退出的服务进程,macOS 认为 GUI 一直没启动完 → Dock 一直弹跳
@@ -11,7 +11,7 @@ import WebKit
 
 let kPort = 8611
 let kBase = URL(string: "http://127.0.0.1:8611")!
-let kAppName = "CEVTUO-RWP2EPUB"
+let kAppName = "CEVTUO-RWP"
 
 final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate {
 
@@ -157,7 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     func dataDir() -> URL {
         let d = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/CEVTUO-RWP2EPUB")
+            .appendingPathComponent("Library/Application Support/CEVTUO-RWP")
         try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
         return d
     }
@@ -203,7 +203,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         border-radius:16px;box-shadow:0 10px 34px rgba(38,52,80,.13)}code{background:#eef1f5;
         padding:2px 6px;border-radius:6px}</style></head><body><div>
         <h2>本地服务启动失败</h2>
-        <p>请查看日志:<br><code>~/Library/Application Support/CEVTUO-RWP2EPUB/logs/server.log</code></p>
+        <p>请查看日志:<br><code>~/Library/Application Support/CEVTUO-RWP/logs/server.log</code></p>
         <p>常见原因:程序自带的 Python 运行时缺失,或端口 \(kPort) 被占用。</p>
         </div></body></html>
         """

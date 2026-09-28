@@ -1,23 +1,23 @@
-CEVTUO-RWP2EPUB — Windows
+CEVTUO-RWP — Windows
 =========================
 
 怎么启动
 --------
 这个包没有 .exe 安装程序,也不需要安装。启动入口是:
 
-    CEVTUO-RWP2EPUB.cmd      ← 双击这一个文件
+    CEVTUO-RWP.cmd      ← 双击这一个文件
 
-1. 解压 CEVTUO-RWP2EPUB-windows.zip
-2. 进入解压出来的 CEVTUO-RWP2EPUB 文件夹
-3. 双击 CEVTUO-RWP2EPUB.cmd
+1. 解压 CEVTUO-RWP-windows.zip
+2. 进入解压出来的 CEVTUO-RWP 文件夹
+3. 双击 CEVTUO-RWP.cmd
 
 会自己弹出一个独立窗口(用系统自带 Edge 的 app 模式,没有地址栏)。
 不需要安装 Python,不需要装任何依赖 —— 运行时都在这个文件夹里。
 
-⚠ 整个文件夹要放在一起。CEVTUO-RWP2EPUB.cmd 需要它旁边的 python\ 和 pylibs\,
+⚠ 整个文件夹要放在一起。CEVTUO-RWP.cmd 需要它旁边的 python\ 和 pylibs\,
   单独把 .cmd 拷到别处是用不了的。
 
-想放桌面:右键 CEVTUO-RWP2EPUB.cmd → 发送到 → 桌面快捷方式
+想放桌面:右键 CEVTUO-RWP.cmd → 发送到 → 桌面快捷方式
 
 如果弹出「Windows 已保护你的电脑」
 ---------------------------------
@@ -39,7 +39,7 @@ CEVTUO-RWP2EPUB — Windows
 
 数据保存在哪
 ------------
-%LOCALAPPDATA%\CEVTUO-RWP2EPUB
+%LOCALAPPDATA%\CEVTUO-RWP
 里面有 output/(每日书)、books/(合集导出)、history/、state/、logs/。
 
 已知限制

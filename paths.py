@@ -6,7 +6,7 @@
 所以这两者要分开:
   * CODE_DIR —— 源码与自带运行时所在,只读也能用
   * DATA_DIR —— 由环境变量 CEVTUO_DATA_DIR 指定,默认落到
-                ~/Library/Application Support/CEVTUO-RWP2EPUB
+                ~/Library/Application Support/CEVTUO-RWP
 没设环境变量时(开发期直接跑源码)两者重合,行为和以前完全一样。
 """
 import os
@@ -14,7 +14,7 @@ from pathlib import Path
 
 CODE_DIR = Path(__file__).resolve().parent
 
-_DEFAULT_DATA = (Path.home() / "Library/Application Support/CEVTUO-RWP2EPUB")
+_DEFAULT_DATA = (Path.home() / "Library/Application Support/CEVTUO-RWP")
 _env = (os.environ.get("CEVTUO_DATA_DIR") or "").strip()
 DATA_DIR = Path(_env).expanduser() if _env else (
     _DEFAULT_DATA if CODE_DIR.name == "app" else CODE_DIR)

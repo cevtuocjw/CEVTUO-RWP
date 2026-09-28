@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
-"""CEVTUO-RWP2EPUB 数据层:合集 / 章节(文章) / RSS 源 / 设置。
+"""CEVTUO-RWP 数据层:合集 / 章节(文章) / RSS 源 / 设置。
 
 对标 EpubKit 的 collections + articles 两表,但**没有 10 页导出上限**。
 数据库: state/cevtuo.db
 """
+import html as _htmlmod
 import json
+import re
 import sqlite3
 import threading
 import time
@@ -38,6 +40,8 @@ CREATE TABLE IF NOT EXISTS articles (
   order_in_collection INTEGER DEFAULT 0,
   source TEXT,
   mode TEXT,
+  note TEXT,
+  text_len INTEGER,
   created_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_articles_collection ON articles(collection_id, order_in_collection);
@@ -53,6 +57,32 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT
 );
 """
+
+
+_TAG = re.compile(r"(?is)<(script|style)[^>]*>.*?</\1>")
+_ANY = re.compile(r"(?s)<[^>]+>")
+_WS = re.compile(r"\s+")
+
+
+def plain_len(raw):
+    """正文的**字数** —— 剥掉标签之后的可见文字长度。**全程序唯一的算法。**
+
+    ⚠️ 不能用 LENGTH(parsed_html) 冒充:那是 HTML 长度,里面全是标签和属性。
+    一篇 127 字的短讯,HTML 有 207 个字符,界面写着「207 字」——
+    数字看着有模有样,但和用户数出来的对不上。
+
+    ⚠️ 空白要**折叠成一个空格**再数,不能删掉、也不能原样留着:
+      · 全删掉 → 和 sanitize.plain_len 差 18 个字符(它保留了换行缩进)
+      · 原样留 → HTML 里的缩进换行会变成几百个「字」
+    这两个数一个进「正文仅 N 字」的提示、一个进章节列表,
+    算法不一致的话同一篇文章会同时冒出两个数字,用户只会觉得软件坏了。
+    """
+    if not raw:
+        return 0
+    s = _TAG.sub(" ", raw)
+    s = _ANY.sub(" ", s)
+    s = _htmlmod.unescape(s)          # &nbsp; 要还原成 1 个字符,不是 6 个
+    return len(_WS.sub(" ", s).strip())
 
 
 def now():
@@ -71,8 +101,27 @@ def conn():
         _conn.row_factory = sqlite3.Row
         _conn.execute("PRAGMA journal_mode=WAL")
         _conn.executescript(SCHEMA)
+        _migrate(_conn)
         _conn.commit()
     return _conn
+
+
+def _migrate(c):
+    """给已经存在的老库补新列。
+
+    CREATE TABLE IF NOT EXISTS 对老库是空操作 —— 新加的列不会自己出现,
+    所以每一次加列都要在这里补一条。SQLite 的 ADD COLUMN 重复执行会报错,
+    因此用 PRAGMA 先查一遍再决定加不加。
+    """
+    cols = {r["name"] for r in c.execute("PRAGMA table_info(articles)")}
+    if "note" not in cols:
+        c.execute("ALTER TABLE articles ADD COLUMN note TEXT")
+    if "text_len" not in cols:
+        c.execute("ALTER TABLE articles ADD COLUMN text_len INTEGER")
+        # 老数据补算一遍,否则界面会一直显示 HTML 长度
+        for r in c.execute("SELECT id, parsed_html FROM articles").fetchall():
+            c.execute("UPDATE articles SET text_len=? WHERE id=?",
+                      (plain_len(r["parsed_html"]), r["id"]))
 
 
 def q(sql, args=()):
@@ -134,8 +183,9 @@ def delete_collection(cid):
 # ---------------------------------------------------------------- articles ---
 def list_articles(cid, with_body=False):
     cols = "*" if with_body else ("id,collection_id,title,url,order_in_collection,"
-                                  "source,mode,created_at,"
-                                  "LENGTH(COALESCE(parsed_html,'')) AS body_len")
+                                  "source,mode,note,created_at,"
+                                  "COALESCE(NULLIF(text_len,0),"
+                                  " LENGTH(COALESCE(parsed_html,''))) AS body_len")
     out = rows(f"SELECT {cols} FROM articles WHERE collection_id=?"
                " ORDER BY order_in_collection ASC, created_at ASC", (cid,))
     for i, a in enumerate(out):
@@ -154,12 +204,13 @@ def next_order(cid):
 
 
 def add_article(cid, title, parsed_html, url=None, html=None, source=None,
-                mode=None):
+                mode=None, note=None):
     aid = new_id()
     q("INSERT INTO articles(id,collection_id,title,html,parsed_html,url,"
-      "order_in_collection,source,mode,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+      "order_in_collection,source,mode,note,text_len,created_at)"
+      " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
       (aid, cid, title or "未命名", html, parsed_html, url, next_order(cid),
-       source, mode, now()))
+       source, mode, note, plain_len(parsed_html), now()))
     return get_article(aid)
 
 
@@ -175,11 +226,12 @@ def add_articles_bulk(cid, items, source=None):
             aid = new_id()
             c.execute(
                 "INSERT INTO articles(id,collection_id,title,html,parsed_html,"
-                "url,order_in_collection,source,mode,created_at)"
-                " VALUES(?,?,?,?,?,?,?,?,?,?)",
+                "url,order_in_collection,source,mode,note,text_len,created_at)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                 (aid, cid, it.get("title") or "未命名", it.get("html"),
                  it.get("parsed_html"), it.get("url"), start + i, source,
-                 it.get("mode"), now()))
+                 it.get("mode"), it.get("note"),
+                 plain_len(it.get("parsed_html")), now()))
             out.append(aid)
         c.commit()
     return out
@@ -187,9 +239,11 @@ def add_articles_bulk(cid, items, source=None):
 
 def update_article(aid, **kw):
     fields = {k: v for k, v in kw.items()
-              if k in ("title", "parsed_html", "url", "html", "mode")}
+              if k in ("title", "parsed_html", "url", "html", "mode", "note")}
     if not fields:
         return get_article(aid)
+    if "parsed_html" in fields:          # 正文换了,字数跟着重算
+        fields["text_len"] = plain_len(fields["parsed_html"])
     sets = ",".join(f"{k}=?" for k in fields)
     q(f"UPDATE articles SET {sets} WHERE id=?", (*fields.values(), aid))
     return get_article(aid)
@@ -240,7 +294,7 @@ def _apply_order(cid, ids):
 
 # --------------------------------------------------------------- settings ----
 DEFAULT_SETTINGS = {
-    "app_name": "CEVTUO-RWP2EPUB",
+    "app_name": "CEVTUO-RWP",
     # 书库根目录(空 = 程序所在目录)。RSS 日报写 <root>/output,
     # 合集导出写 <root>/books。用户可在界面上改,改的时候旧书会一起搬过去。
     "library_dir": "",

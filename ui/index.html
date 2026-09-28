@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>CEVTUO-RWP2EPUB</title>
+<title>CEVTUO-RWP</title>
 <link rel="icon" href="/logo.png"/>
 <style>
 /* ==========================================================================
@@ -165,7 +165,12 @@ html[data-theme="dark"] .nav button.on{
   background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.10));
   border-color:rgba(255,255,255,.3);
 }
-.nav .ico{width:18px;text-align:center;opacity:.85;font-size:14px}
+/* 侧边栏图标改用 SVG 描边图标。
+   早先用的是 ▦ ≋ ▤ 这类 Unicode 字符,长什么样完全取决于机器上装了什么字体,
+   换台电脑就可能变成方框或错位。 */
+.nav .ico{width:19px;height:19px;flex:none;display:block;opacity:.85}
+.nav button.on .ico{opacity:1}
+.nav button:hover .ico{opacity:.95}
 .sidefoot{position:relative;z-index:2;padding:12px 16px;font-size:10.5px;
   color:var(--side-ink-soft);border-top:1px solid rgba(255,255,255,.4)}
 
@@ -245,6 +250,33 @@ tr:hover td{background:rgba(var(--panel),.32)}
 .ch .ti b{font-weight:520;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ch .ti small{color:var(--ink-faint);font-size:11.5px;display:block;white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
+
+/* 抓取失败 / 内容不对的章节 —— 整行染成警示色,并在标题下写明原因。
+   早先失败的文章根本不会出现在这里,用户以为「少了几章」,而不是
+   「这几章失败了、原因是什么」。 */
+.ch.warn{border-color:color-mix(in srgb,var(--warn,#d9822b) 46%,transparent);
+  background:color-mix(in srgb,var(--warn,#d9822b) 7%,rgba(var(--panel),calc(var(--alpha)*.5)))}
+.ch.warn .no{color:var(--warn,#d9822b)}
+.chnote{display:flex;align-items:center;gap:5px;margin-top:3px;font-size:11.5px;
+  color:var(--warn,#d9822b);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chnote svg.ico{width:13px;height:13px;opacity:1}
+
+/* 图标基础尺寸。侧边栏那几条单独在 .nav .ico 里定。 */
+svg.ico{width:19px;height:19px;flex:none;display:block;opacity:.85}
+.btn svg.ico{width:14px;height:14px;display:inline-block;vertical-align:-2px;
+  margin-right:5px;opacity:.9}
+
+/* ---- 在线封面搜索结果 ---- */
+.covgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:11px;
+  max-height:52vh;overflow:auto;padding:3px}
+.covitem{cursor:pointer;border-radius:var(--radius-md);overflow:hidden;
+  border:1px solid var(--line-soft);background:rgba(var(--panel),calc(var(--alpha)*.55));
+  transition:transform .12s ease,border-color .12s ease}
+.covitem:hover{transform:translateY(-2px);
+  border-color:color-mix(in srgb,var(--accent) 45%,transparent)}
+.covitem img{width:100%;height:142px;object-fit:cover;display:block;background:#0001}
+.covitem span{display:block;padding:5px 7px;font-size:10.5px;color:var(--ink-faint);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* ---- 弹窗 ---- */
 .mask{position:fixed;inset:0;background:rgba(12,18,28,.34);display:flex;align-items:center;
@@ -327,17 +359,48 @@ html[data-theme="dark"] .seg button.on{background:rgba(255,255,255,.16)}
 <body>
 <div class="aurora"><i class="a"></i><i class="b"></i><i class="c"></i><i class="d"></i></div>
 
+<!-- 图标库。全部用 currentColor 描边,跟着文字颜色走,暗色/亮色主题都不用改。 -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/>
+    <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/>
+  </symbol>
+  <symbol id="i-rss" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/>
+    <circle cx="5.6" cy="18.4" r="1.7" fill="currentColor" stroke="none"/>
+  </symbol>
+  <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 19.2A2.8 2.8 0 0 1 6.8 16.4H20"/>
+    <path d="M6.8 2.4H20v19.2H6.8A2.8 2.8 0 0 1 4 18.8V5.2A2.8 2.8 0 0 1 6.8 2.4z"/>
+  </symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 21v-6M5 11V3M12 21v-9M12 8V3M19 21v-4M19 13V3"/>
+    <path d="M2.5 15h5M9.5 8h5M16.5 17h5"/>
+  </symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20.5 12a8.5 8.5 0 1 1-2.5-6"/><path d="M20.5 4.5V11H14"/>
+  </symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M10.3 3.9 1.8 18.2A2 2 0 0 0 3.5 21.2h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>
+    <path d="M12 9.5v4.2"/><circle cx="12" cy="17.4" r="1.1" fill="currentColor" stroke="none"/>
+  </symbol>
+  <symbol id="i-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="3.5" width="18" height="17" rx="3"/>
+    <circle cx="8.6" cy="9.4" r="1.9"/><path d="m3.4 17.6 4.6-4.3 4 3.6 3.3-2.9 5.3 4.6"/>
+  </symbol>
+</svg>
+
 <div class="app">
   <aside class="side">
     <div class="brand">
       <img src="/logo-mark.png" alt=""/>
-      <div class="tx"><b>CEVTUO-RWP2EPUB</b><small data-i18n="brand.sub">网页 / RSS → EPUB 工作台</small></div>
+      <div class="tx"><b>CEVTUO-RWP</b><small data-i18n="brand.sub">网页 / RSS → EPUB 工作台</small></div>
     </div>
     <nav class="nav" id="nav">
-      <button data-v="collections" class="on"><span class="ico">▦</span><span data-i18n="nav.collections">CEVTUO合集坊</span></button>
-      <button data-v="rss"><span class="ico">≋</span><span data-i18n="nav.rss">Rssdailyepub</span></button>
-      <button data-v="library"><span class="ico">▤</span><span data-i18n="nav.library">rssdailyepub书库</span></button>
-      <button data-v="settings"><span class="ico">⚙</span><span data-i18n="nav.settings">设置</span></button>
+      <button data-v="collections" class="on"><svg class="ico"><use href="#i-grid"/></svg><span data-i18n="nav.collections">CEVTUO合集坊</span></button>
+      <button data-v="rss"><svg class="ico"><use href="#i-rss"/></svg><span data-i18n="nav.rss">Rssdailyepub</span></button>
+      <button data-v="library"><svg class="ico"><use href="#i-book"/></svg><span data-i18n="nav.library">书库</span></button>
+      <button data-v="settings"><svg class="ico"><use href="#i-sliders"/></svg><span data-i18n="nav.settings">设置</span></button>
     </nav>
     <div class="sidefoot" id="sidefoot">—</div>
   </aside>
@@ -359,9 +422,17 @@ const I18N = {
   zh:{
     "brand.sub":"网页 / RSS → EPUB 工作台",
     "nav.collections":"CEVTUO合集坊","nav.rss":"Rssdailyepub",
-    "nav.library":"rssdailyepub书库","nav.settings":"设置",
+    "nav.library":"书库","nav.settings":"设置",
     "common.ok":"确定","common.close":"关闭","common.save":"保存","common.cancel":"取消",
     "common.delete":"删除","common.edit":"编辑","common.open":"打开","common.reveal":"在访达显示",
+    "ch.refetch":"再次获取","ch.refetching":"获取中…","ch.refetchOk":"已重新获取,共 {n} 字",
+    "ch.refetchFail":"重新获取失败:","ch.up":"上移","ch.down":"下移",
+    "lib.delBook":"删除这本书",
+    "lib.delConfirm":"删除《{name}》?\n本地文件会一起删掉,不可撤销。",
+    "lib.orphan":"未归类","lib.orphanNote":"在书库里,但认不出属于哪个合集",
+    "cov.search":"在线找封面","cov.searchPh":"书名 / 作者 / 关键词",
+    "cov.searching":"正在搜…","cov.noResult":"没找到合适的封面,换个关键词试试",
+    "cov.use":"用这张","cov.searchFail":"搜索失败:",
     "common.import":"导入内容","common.export":"导出 EPUB","common.chapters":"章节管理",
     "common.blank":"＋ 空白页","common.fromUrl":"＋ 从网址添加","common.viewEdit":"查看 / 编辑",
     "common.back":"返回","common.refresh":"刷新","common.new":"新建",
@@ -410,6 +481,7 @@ const I18N = {
     "lib.noRss":"还没有生成过每日书。去 Rssdailyepub 点一键生成。",
     "set.browser":"浏览器渲染(全文获取的关键)",
     "set.browserNote":"为了拿到 archive.today、以及靠 Bypass Paywalls Clean 解锁的页面全文,程序会把你的 Chrome profile 复制一份,用它启动一个带调试口的 Chrome 来渲染页面。你的日常 Chrome 不受影响。",
+    "set.appver":"软件版本",
     "set.port":"调试端口","set.ver":"浏览器版本","set.profile":"profile 副本",
     "set.ready":"已就绪","set.notReady":"尚未复制","set.connected":"已连接","set.disconnected":"未启动",
     "set.startChrome":"启动 / 连接 Chrome","set.sync":"重新同步登录态","set.test":"测试渲染一个网址",
@@ -431,9 +503,17 @@ const I18N = {
   en:{
     "brand.sub":"Web / RSS → EPUB workbench",
     "nav.collections":"CEVTUO Studio","nav.rss":"Rssdailyepub",
-    "nav.library":"rssdailyepub Library","nav.settings":"Settings",
+    "nav.library":"Library","nav.settings":"Settings",
     "common.ok":"OK","common.close":"Close","common.save":"Save","common.cancel":"Cancel",
     "common.delete":"Delete","common.edit":"Edit","common.open":"Open","common.reveal":"Reveal in Finder",
+    "ch.refetch":"Refetch","ch.refetching":"Fetching…","ch.refetchOk":"Refetched — {n} chars",
+    "ch.refetchFail":"Refetch failed: ","ch.up":"Move up","ch.down":"Move down",
+    "lib.delBook":"Delete book",
+    "lib.delConfirm":"Delete “{name}”?\nThe local file will be removed too. This cannot be undone.",
+    "lib.orphan":"Unfiled","lib.orphanNote":"in the library but not linked to a collection",
+    "cov.search":"Find cover online","cov.searchPh":"Title / author / keyword",
+    "cov.searching":"Searching…","cov.noResult":"No covers found — try another keyword",
+    "cov.use":"Use this","cov.searchFail":"Search failed: ",
     "common.import":"Import","common.export":"Export EPUB","common.chapters":"Chapters",
     "common.blank":"+ Blank page","common.fromUrl":"+ From URL","common.viewEdit":"View / Edit",
     "common.back":"Back","common.refresh":"Refresh","common.new":"New",
@@ -482,6 +562,7 @@ const I18N = {
     "lib.noRss":"No daily books yet. Hit Build now in Rssdailyepub.",
     "set.browser":"Browser rendering (key to full text)",
     "set.browserNote":"To get full text from archive.today and pages unlocked by Bypass Paywalls Clean, the app keeps a copy of your Chrome profile and drives a Chrome with a debug port. Your everyday Chrome is untouched.",
+    "set.appver":"App version",
     "set.port":"Debug port","set.ver":"Browser","set.profile":"Profile copy",
     "set.ready":"ready","set.notReady":"not copied","set.connected":"connected","set.disconnected":"not running",
     "set.startChrome":"Start / connect Chrome","set.sync":"Re-sync session","set.test":"Test render a URL",
@@ -623,7 +704,7 @@ async function renderCollection(cid){
       <div class="row" style="align-items:flex-start">
         <div style="width:80px;height:110px;flex:none;border-radius:var(--radius-md);
           border:1px solid var(--line-soft);background:rgba(var(--panel),.5) center/cover no-repeat;
-          ${c.cover?`background-image:url('file://${esc(c.cover)}')`:''}"></div>
+          ${c.cover?`background-image:url('/api/cover?id=${encodeURIComponent(c.id)}&v=${Date.now()}')`:''}"></div>
         <div class="grow">
           <div class="row" style="margin-bottom:9px">
             <input type="text" id="cTitle" value="${esc(c.title)}" style="max-width:330px"/>
@@ -633,6 +714,7 @@ async function renderCollection(cid){
           <div class="row">
             <button class="btn" id="saveMeta">${t('coll.saveMeta')}</button>
             <label class="btn" style="cursor:pointer">${t('coll.cover')}<input type="file" id="coverFile" accept="image/*" style="display:none"/></label>
+            <button class="btn" id="findCover"><svg class="ico"><use href="#i-image"/></svg><span>${t('cov.search')}</span></button>
             <button class="btn primary" id="btnImport">${t('common.import')}</button>
             <button class="btn" id="btnExport">${t('common.export')}</button>
             <button class="btn danger" id="btnDelColl">${t('coll.del')}</button>
@@ -655,8 +737,12 @@ async function renderCollection(cid){
   $('#coverFile').onchange = e=>{
     const f=e.target.files[0]; if(!f) return;
     const fr=new FileReader();
-    fr.onload = async ()=>{ await post('/api/collection/cover',{id:cid,data_url:fr.result}); renderCollection(cid); };
+    fr.onload = async ()=>{
+      try{ await post('/api/collection/cover',{id:cid,data_url:fr.result}); }
+      catch(err){ toast(String(err.message||err)); return; }
+      renderCollection(cid); };
     fr.readAsDataURL(f); };
+  $('#findCover').onclick = ()=>coverSearchModal(cid, c.title);
   $('#btnImport').onclick = ()=>importModal(cid);
   $('#btnExport').onclick = ()=>exportModal(cid);
   $('#btnDelColl').onclick = async ()=>{
@@ -683,12 +769,14 @@ async function loadChapters(cid){
   $('#chCount').textContent = A.length + ' ' + t('coll.chapters');
   const box = $('#chList');
   if(!A.length){ box.innerHTML = `<div class="empty">${t('ch.empty')}</div>`; return; }
-  box.innerHTML = A.map((a,i)=>`<div class="ch">
+  box.innerHTML = A.map((a,i)=>`<div class="ch${a.note?' warn':''}">
       <div class="no">${i+1}</div>
       <div class="ti" data-open="${a.id}"><b>${esc(a.title||'')}</b>
-        <small>${a.body_len? a.body_len+(LANG==='zh'?' 字':' ch'):'—'} · ${esc(a.url||a.source||'')} · ${esc(a.mode||'')}</small></div>
-      <button class="btn sm" data-up="${a.id}">↑</button>
-      <button class="btn sm" data-dn="${a.id}">↓</button>
+        <small>${a.body_len? a.body_len+(LANG==='zh'?' 字':' ch'):'—'} · ${esc(a.url||a.source||'')} · ${esc(a.mode||'')}</small>
+        ${a.note?`<span class="chnote" title="${esc(a.note)}"><svg class="ico"><use href="#i-warn"/></svg><span>${esc(a.note)}</span></span>`:''}</div>
+      <button class="btn sm" data-up="${a.id}" title="${t('ch.up')}">↑</button>
+      <button class="btn sm" data-dn="${a.id}" title="${t('ch.down')}">↓</button>
+      <button class="btn sm" data-re="${a.id}"><svg class="ico"><use href="#i-refresh"/></svg><span>${t('ch.refetch')}</span></button>
       <button class="btn sm" data-open2="${a.id}">${t('common.viewEdit')}</button>
       <button class="btn sm danger" data-del="${a.id}">${t('common.delete')}</button>
     </div>`).join('');
@@ -699,6 +787,18 @@ async function loadChapters(cid){
   $$('[data-del]',box).forEach(e=>e.onclick=async()=>{
     if(!confirm(t('ch.delConfirm'))) return;
     await post('/api/article/delete',{id:e.dataset.del}); loadChapters(cid);});
+  // 「再次获取」—— 任何一章都能点,不只是标了警告的
+  $$('[data-re]',box).forEach(e=>e.onclick=async()=>{
+    const old = e.innerHTML;
+    e.disabled = true; e.textContent = t('ch.refetching');
+    let r=null, thrown='';
+    try{ r = await post('/api/article/refetch',{id:e.dataset.re}); }
+    catch(x){ thrown = x.message||String(x); }
+    e.disabled = false; e.innerHTML = old;
+    if(r && r.ok) toast(t('ch.refetchOk').replace('{n}', r.chars));
+    else toast(t('ch.refetchFail')+' '+((r&&r.err)||thrown));
+    loadChapters(cid);
+  });
 }
 
 async function openArticle(aid,onSaved){
@@ -737,6 +837,49 @@ async function openArticle(aid,onSaved){
 }
 
 /* ============================== 导入 ============================== */
+/* 在线找封面 —— 三个免费源(Google Books / Open Library / Wikimedia),
+   后端合并去重后一次给回来。选中哪张就把图**下载到本地**再设为封面。 */
+function coverSearchModal(cid, seed){
+  modal({title:t('cov.search'), wide:true, okText:null,
+    body:`<div class="row" style="margin-bottom:12px">
+        <input type="text" id="covQ" class="grow" value="${esc(seed||'')}" placeholder="${t('cov.searchPh')}"/>
+        <button class="btn primary" id="covGo">${t('cov.search')}</button></div>
+      <div id="covRes"><div class="empty">—</div></div>`});
+  const host = $('#modalHost');
+  host.querySelector('.ft').innerHTML = `<button class="btn" onclick="closeModal()">${t('common.close')}</button>`;
+  const res = $('#covRes');
+  async function go(){
+    const q = $('#covQ').value.trim();
+    if(!q) return;
+    res.innerHTML = `<div class="empty">${t('cov.searching')}</div>`;
+    let r=null, err='';
+    try{ r = await post('/api/cover/search',{q}); }catch(x){ err = x.message||String(x); }
+    if(!r || !r.ok){
+      // 区分「一个都没搜到」和「三个源全挂了」—— 前者换个词就行,后者换词也没用
+      res.innerHTML = `<div class="empty">${esc((r&&r.err)||err||t('cov.noResult'))}</div>`;
+      return;
+    }
+    if(!r.results.length){ res.innerHTML = `<div class="empty">${t('cov.noResult')}</div>`; return; }
+    res.innerHTML = `<div class="covgrid">${r.results.map((x,i)=>
+        `<div class="covitem" data-cv="${i}" title="${esc(x.title||x.source)}">
+           <img src="${esc(x.thumb)}" loading="lazy" alt=""/>
+           <span>${esc(x.source)}</span></div>`).join('')}</div>`;
+    $$('[data-cv]',res).forEach(el=>el.onclick=async()=>{
+      const x = r.results[+el.dataset.cv];
+      el.style.opacity = .45;
+      let rr=null, e2='';
+      try{ rr = await post('/api/collection/coverUrl',{id:cid,url:x.url}); }
+      catch(z){ e2 = z.message||String(z); }
+      el.style.opacity = 1;
+      if(rr && rr.ok){ closeModal(); renderCollection(cid); }
+      else toast(((rr&&rr.err)||e2));
+    });
+  }
+  $('#covGo').onclick = go;
+  $('#covQ').onkeydown = e=>{ if(e.key==='Enter') go(); };
+  if(seed) go();
+}
+
 function importModal(cid){
   let tab='urls';
   const m = modal({title:t('imp.title'), wide:true,
@@ -1036,7 +1179,7 @@ function feedModal(feed,cats,done){
       closeModal(); done(); }});
 }
 
-/* ============================ rssdailyepub书库 ============================ */
+/* ============================ 书库 ============================ */
 async function renderLibrary(){
   $('#title').textContent = t('nav.library');
   const lib = await get('/api/library');
@@ -1062,16 +1205,32 @@ async function renderLibrary(){
     : `<div class="empty" style="grid-column:1/-1">${t('lib.noRss')}</div>`;
   $$('[data-d]',lr).forEach(el=>el.onclick=()=>{
     const d=lib.rss.find(x=>x.date===el.dataset.d); bookListModal(d.date,d.books); });
+
+  // 平铺之后,索引对不上的书(手动搬过、或别的程序放进去的)也要看得见 ——
+  // 悄悄藏起来比报错更糟:用户会以为文件丢了。
+  const orphan = lib.orphan || [];
+  if(orphan.length){
+    $('#view').insertAdjacentHTML('beforeend',
+      `<div class="card glass"><h3>${t('lib.orphan')}
+         <span class="muted">${t('lib.orphanNote')}</span></h3><div class="grid" id="lo"></div></div>`);
+    const lo = $('#lo');
+    lo.innerHTML = orphan.map((b,i)=>`<div class="folder glass" data-o="${i}">
+        <div class="t">📖 ${esc(b.name)}</div>
+        <div class="muted">${fmtSize(b.size)} · ${esc(b.mtime_str)}</div></div>`).join('');
+    $$('[data-o]',lo).forEach(el=>el.onclick=()=>
+      bookListModal(t('lib.orphan'),[orphan[+el.dataset.o]]));
+  }
 }
 
 function bookListModal(title,books){
   modal({title, wide:true,
-    body: books.length? `<table><tbody>${books.map((b,i)=>`<tr>
+    body: books.length? `<table><tbody>${books.map((b,i)=>`<tr data-row="${i}">
         <td>📖 ${esc(b.name)}</td>
         <td class="muted" style="width:1%">${fmtSize(b.size)}</td>
         <td class="muted" style="width:1%">${esc(b.mtime_str)}</td>
         <td style="width:1%"><button class="btn sm" data-bk="${i}" data-read="1">${t('common.open')}</button></td>
         <td style="width:1%"><button class="btn sm" data-bk="${i}" data-read="0">${t('common.reveal')}</button></td>
+        <td style="width:1%"><button class="btn sm danger" data-bdel="${i}">${t('common.delete')}</button></td>
       </tr>`).join('')}</tbody></table>` : '<div class="empty">—</div>',
     okText:null});
   // 用 fetch 而不是 <a target=_blank>:原生窗口里外链会被交给默认浏览器,
@@ -1082,6 +1241,18 @@ function bookListModal(title,books){
     const b = books[+el.dataset.bk];
     if(b) await get('/api/open?target='+encodeURIComponent(b.path)+'&read='+el.dataset.read);
   });
+  // 删书 —— 按钮和右键都行。会连本地文件一起删,所以必须二次确认。
+  async function delBook(i){
+    const b = books[i]; if(!b) return;
+    if(!confirm(t('lib.delConfirm').replace('{name}', b.name))) return;
+    let r=null, thrown='';
+    try{ r = await post('/api/book/delete',{path:b.path}); }catch(x){ thrown = x.message||String(x); }
+    if(r && r.ok){ closeModal(); await renderLibrary(); toast(LANG==='zh'?'已删除':'Deleted'); }
+    else toast(((r&&r.err)||thrown));
+  }
+  $$('[data-bdel]', host).forEach(el => el.onclick = ()=>delBook(+el.dataset.bdel));
+  $$('[data-row]', host).forEach(el => el.oncontextmenu = ev=>{
+    ev.preventDefault(); delBook(+el.dataset.row); });
 }
 
 /* ============================== 设置 ============================== */
@@ -1135,6 +1306,7 @@ async function renderSettings(){
       <p class="muted">${t('set.browserNote')}</p>
       <div class="kv">
         <b>${t('set.port')}</b><span>${c.port} — ${c.chrome_running?`<span class="tag ok">${t('set.connected')}</span>`:`<span class="tag warn">${t('set.disconnected')}</span>`}</span>
+        <b>${t('set.appver')}</b><span>CEVTUO-RWP ${esc(s.app_version||'—')}</span>
         <b>${t('set.ver')}</b><span>${esc(c.version||'—')}</span>
         <b>${t('set.profile')}</b><span>${c.profile_copied?`<span class="tag ok">${t('set.ready')}</span>`:`<span class="tag warn">${t('set.notReady')}</span>`}</span>
       </div>
@@ -1149,7 +1321,7 @@ async function renderSettings(){
     <div class="card glass">
       <h3>${t('set.about')}</h3>
       <div class="kv">
-        <b>${t('set.app')}</b><span>CEVTUO-RWP2EPUB</span>
+        <b>${t('set.app')}</b><span>CEVTUO-RWP</span>
         <b>author</b><span>JINGWEI CHANG</span>
         <b>${t('set.dataDir')}</b><span class="muted"><code>${esc(P.base||'')}</code></span>
       </div>

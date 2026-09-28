@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>CEVTUO-RWP2EPUB — Turn web pages and RSS into ebooks</title>
+<title>CEVTUO-RWP — Turn web pages and RSS into ebooks</title>
 <meta name="description" content="Turn web pages, site links, RSS feeds and Markdown into EPUB ebooks. Native desktop app, bundled runtime, ready out of the box."/>
 <link rel="icon" href="logo.png"/>
 <style>
@@ -122,6 +122,52 @@
   .install code{background:rgba(var(--panel),.7);padding:2px 7px;border-radius:6px;
     border:1px solid var(--line2);font-size:12.5px}
 
+  /* ---------- 截图 ---------- */
+  .shots{margin:16px 0 0;padding:28px 30px}
+  .shots h2,.demo h2{margin:0 0 18px;font-size:17px;font-weight:700;text-align:center}
+  .shots .grid{display:grid;gap:18px;
+    grid-template-columns:repeat(auto-fit,minmax(290px,1fr))}
+  .shots figure{margin:0}
+  .shots a{display:block;text-decoration:none}
+  .shots img{width:100%;display:block;border-radius:14px;
+    border:1px solid var(--line2);box-shadow:0 8px 26px rgba(30,44,70,.16);
+    transition:transform .22s var(--ease),box-shadow .22s var(--ease)}
+  .shots a:hover img{transform:translateY(-3px);
+    box-shadow:0 16px 42px rgba(30,44,70,.28)}
+  .shots figcaption{margin-top:10px;font-size:13px;color:var(--soft);line-height:1.55}
+  .shots figcaption b{display:block;color:var(--ink);font-weight:640;font-size:13.5px;
+    margin-bottom:2px}
+  /* 第一张横跨整行 —— 章节管理是核心界面,值得大一倍 */
+  .shots figure.wide{grid-column:1/-1}
+
+  /* ---------- 演示视频 ---------- */
+  .demo{margin:16px 0 0;padding:28px 30px}
+  .demo video{width:100%;display:block;border-radius:16px;background:#000;
+    border:1px solid var(--line2);box-shadow:0 12px 36px rgba(30,44,70,.24)}
+  .demo .cap{margin:12px 0 0;font-size:12.5px;color:var(--faint);text-align:center}
+
+  /* ---------- 折叠块:安装说明 ---------- */
+  /* 安装是一次性内容,用完再也不看。默认展开会把截图和视频全推到屏幕外。 */
+  details.fold>summary{list-style:none;cursor:pointer;user-select:none;
+    display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  details.fold>summary::-webkit-details-marker{display:none}
+  details.fold>summary h2{margin:0;text-align:left}
+  details.fold>summary .hint{font-size:12.5px;color:var(--faint)}
+  details.fold>summary::after{content:"";width:8px;height:8px;flex:none;margin-left:auto;
+    border-right:2px solid var(--faint);border-bottom:2px solid var(--faint);
+    transform:rotate(45deg);transition:transform .25s var(--ease);translate:0 -3px}
+  details.fold[open]>summary::after{transform:rotate(-135deg);translate:0 2px}
+  details.fold[open]>summary{margin-bottom:22px}
+  details.fold>summary:hover .hint{color:var(--soft)}
+
+  @media (max-width:660px){
+    .wrap{padding:30px 14px 0}
+    header{padding:30px 16px 28px}
+    header img{width:98px;height:98px}
+    .dl .btn{min-width:100%}
+    .install,.shots,.demo{padding:22px 17px}
+  }
+
   /* 启动说明小卡片 */
   .launch{margin-top:16px;padding:15px 17px;border-radius:14px;
     background:rgba(var(--panel),.42);border:1px solid var(--line2)}
@@ -160,18 +206,18 @@
 
 <div class="wrap">
   <header class="glass">
-    <img src="logo.png" alt="CEVTUO-RWP2EPUB"/>
-    <h1>CEVTUO-RWP2EPUB</h1>
+    <img src="logo.png" alt="CEVTUO-RWP"/>
+    <h1>CEVTUO-RWP</h1>
     <p class="sub">Turn web pages, in-site links, RSS feeds and Markdown into EPUB ebooks.<br/>
       A native desktop app with its runtime bundled in — download and run.</p>
     <p class="byline">author: <b>cevtuo</b></p>
 
     <div class="dl">
-      <a class="btn primary" href="https://github.com/cevtuocjw/CEVTUO-RWP2EPUB/releases/latest/download/CEVTUO-RWP2EPUB-macOS.dmg">
+      <a class="btn primary" href="https://github.com/cevtuocjw/CEVTUO-RWP/releases/latest/download/CEVTUO-RWP-macOS.dmg">
         <svg class="osicon apple"><use href="#i-apple"/></svg>
         <span class="tx"><b>Download for macOS</b><small>.dmg · Apple Silicon · ~100 MB</small></span>
       </a>
-      <a class="btn" href="https://github.com/cevtuocjw/CEVTUO-RWP2EPUB/releases/latest/download/CEVTUO-RWP2EPUB-windows.zip">
+      <a class="btn" href="https://github.com/cevtuocjw/CEVTUO-RWP/releases/latest/download/CEVTUO-RWP-windows.zip">
         <svg class="osicon win"><use href="#i-windows"/></svg>
         <span class="tx"><b>Download for Windows</b><small>.zip · Windows 10/11 x64 · ~37 MB</small></span>
       </a>
@@ -180,10 +226,10 @@
     <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line2)">
       <div style="font-size:12.5px;color:var(--faint);margin-bottom:9px">Direct downloads from GitHub can be slow in mainland China — use a mirror below (identical content)</div>
       <div style="display:flex;gap:9px;justify-content:center;flex-wrap:wrap">
-        <a class="btn" style="min-width:auto;padding:9px 15px" href="https://ghproxy.net/https://github.com/cevtuocjw/CEVTUO-RWP2EPUB/releases/latest/download/CEVTUO-RWP2EPUB-macOS.dmg"><span class="tx"><b style="font-size:13.5px">macOS · ghproxy.net</b></span></a>
-        <a class="btn" style="min-width:auto;padding:9px 15px" href="https://gh-proxy.com/https://github.com/cevtuocjw/CEVTUO-RWP2EPUB/releases/latest/download/CEVTUO-RWP2EPUB-macOS.dmg"><span class="tx"><b style="font-size:13.5px">macOS · gh-proxy.com</b></span></a>
-        <a class="btn" style="min-width:auto;padding:9px 15px" href="https://ghfast.top/https://github.com/cevtuocjw/CEVTUO-RWP2EPUB/releases/latest/download/CEVTUO-RWP2EPUB-macOS.dmg"><span class="tx"><b style="font-size:13.5px">macOS · ghfast.top</b></span></a>
-        <a class="btn" style="min-width:auto;padding:9px 15px" href="https://ghproxy.net/https://github.com/cevtuocjw/CEVTUO-RWP2EPUB/releases/latest/download/CEVTUO-RWP2EPUB-windows.zip"><span class="tx"><b style="font-size:13.5px">Windows · ghproxy.net</b></span></a>
+        <a class="btn" style="min-width:auto;padding:9px 15px" href="https://ghproxy.net/https://github.com/cevtuocjw/CEVTUO-RWP/releases/latest/download/CEVTUO-RWP-macOS.dmg"><span class="tx"><b style="font-size:13.5px">macOS · ghproxy.net</b></span></a>
+        <a class="btn" style="min-width:auto;padding:9px 15px" href="https://gh-proxy.com/https://github.com/cevtuocjw/CEVTUO-RWP/releases/latest/download/CEVTUO-RWP-macOS.dmg"><span class="tx"><b style="font-size:13.5px">macOS · gh-proxy.com</b></span></a>
+        <a class="btn" style="min-width:auto;padding:9px 15px" href="https://ghfast.top/https://github.com/cevtuocjw/CEVTUO-RWP/releases/latest/download/CEVTUO-RWP-macOS.dmg"><span class="tx"><b style="font-size:13.5px">macOS · ghfast.top</b></span></a>
+        <a class="btn" style="min-width:auto;padding:9px 15px" href="https://ghproxy.net/https://github.com/cevtuocjw/CEVTUO-RWP/releases/latest/download/CEVTUO-RWP-windows.zip"><span class="tx"><b style="font-size:13.5px">Windows · ghproxy.net</b></span></a>
       </div>
     </div>
 
@@ -223,15 +269,89 @@
     </div>
   </section>
 
+  <!-- ---------- 截图 ---------- -->
+  <section class="shots glass">
+    <h2>What it looks like</h2>
+    <div class="grid">
+      <figure class="wide">
+        <a href="assets/chapters.jpg" target="_blank" rel="noopener">
+          <img src="assets/chapters.jpg" alt="Chapter management" loading="lazy"/></a>
+        <figcaption>
+          <b>Chapter management</b>
+          Every page is a chapter you can open and edit on its own, reorder, or delete.
+          Each row has <b>Refetch</b>. When a page could not be fetched, or came back
+          looking like a paywall preview rather than the article, the row is flagged in
+          amber with the actual reason — <i>“couldn’t open the page (ERR_CONNECTION_CLOSED)”</i>,
+          <i>“only 127 characters — probably just the summary”</i> — so a failure is never
+          silently missing from your book.
+          <div class="zh">章节管理:每一页就是一章,可单独打开编辑、上下移动、删除。每行都有「再次获取」。
+            抓取失败、或只抓到付费墙预览时,整行标成琥珀色并写明真实原因,不会悄悄少一章。</div>
+        </figcaption>
+      </figure>
+
+      <figure>
+        <a href="assets/import.jpg" target="_blank" rel="noopener">
+          <img src="assets/import.jpg" alt="Import" loading="lazy"/></a>
+        <figcaption><b>Four ways in</b>
+          Multiple URLs, links found on a site, RSS feeds, or Markdown.
+          <div class="zh">四种导入:多个网址 / 站内链接 / RSS / Markdown。</div></figcaption>
+      </figure>
+
+      <figure>
+        <a href="assets/collections.jpg" target="_blank" rel="noopener">
+          <img src="assets/collections.jpg" alt="Collections" loading="lazy"/></a>
+        <figcaption><b>Collections</b>
+          One collection is one ebook. Set title, author, language and cover.
+          <div class="zh">一个合集就是一本书:标题、作者、语言、封面。</div></figcaption>
+      </figure>
+
+      <figure>
+        <a href="assets/library.jpg" target="_blank" rel="noopener">
+          <img src="assets/library.jpg" alt="Library" loading="lazy"/></a>
+        <figcaption><b>Library</b>
+          Collection exports and daily RSS books in one place. Right-click a book to
+          delete it — the local file goes with it.
+          <div class="zh">书库:合集导出与每日书放一起。右键一本书即可删除,本地文件一并清掉。</div></figcaption>
+      </figure>
+
+      <figure>
+        <a href="assets/settings.jpg" target="_blank" rel="noopener">
+          <img src="assets/settings.jpg" alt="Settings" loading="lazy"/></a>
+        <figcaption><b>Settings</b>
+          Light/dark, a glass-intensity slider, Chinese &amp; English, and wherever you
+          want the library to live.
+          <div class="zh">设置:亮/暗色、玻璃强度滑杆、中英文、书库位置。</div></figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ---------- 演示视频 ---------- -->
+  <section class="demo glass">
+    <h2>Demo</h2>
+    <video controls preload="metadata" playsinline poster="assets/library.jpg">
+      <source src="assets/demo.webm" type="video/webm"/>
+      Your browser cannot play this video.
+      <a href="assets/demo.webm">Download it instead.</a>
+    </video>
+    <p class="cap">Import → chapter management → library → settings.
+      <span class="zh">导入 → 章节管理 → 书库 → 设置。</span></p>
+  </section>
+
   <section class="install glass" id="install">
-    <h2>Installation</h2>
+    <!-- 安装说明默认折叠:这是一次性内容,展开着会把上面的截图和视频全推到屏幕外 -->
+    <details class="fold">
+      <summary>
+        <h2>Installation</h2>
+        <span class="hint">macOS &amp; Windows · click to expand
+          <span class="zh" style="display:inline;margin:0">· 点开看安装步骤</span></span>
+      </summary>
     <div class="inst-grid">
 
       <div class="inst-col">
         <h3><svg class="osicon apple"><use href="#i-apple"/></svg> macOS</h3>
         <ol>
-          <li>Open the <code>.dmg</code> and drag <b>CEVTUO-RWP2EPUB</b> into <b>Applications</b>.
-            <div class="zh">打开 .dmg,把 CEVTUO-RWP2EPUB 拖进「应用程序」。</div></li>
+          <li>Open the <code>.dmg</code> and drag <b>CEVTUO-RWP</b> into <b>Applications</b>.
+            <div class="zh">打开 .dmg,把 CEVTUO-RWP 拖进「应用程序」。</div></li>
 
           <li>First launch: <b>right-click the app → Open</b>.
             <div class="zh">首次打开:<b>右键点 App → 打开</b>。</div></li>
@@ -255,14 +375,14 @@
       <div class="inst-col">
         <h3><svg class="osicon win"><use href="#i-windows"/></svg> Windows</h3>
         <ol>
-          <li>Unzip <code>CEVTUO-RWP2EPUB-windows.zip</code>.
-            <div class="zh">解压 CEVTUO-RWP2EPUB-windows.zip。</div></li>
+          <li>Unzip <code>CEVTUO-RWP-windows.zip</code>.
+            <div class="zh">解压 CEVTUO-RWP-windows.zip。</div></li>
 
-          <li>Open the extracted <b>CEVTUO-RWP2EPUB</b> folder.
-            <div class="zh">进入解压出来的 <b>CEVTUO-RWP2EPUB</b> 文件夹。</div></li>
+          <li>Open the extracted <b>CEVTUO-RWP</b> folder.
+            <div class="zh">进入解压出来的 <b>CEVTUO-RWP</b> 文件夹。</div></li>
 
-          <li class="hi"><b>Double-click <code>CEVTUO-RWP2EPUB.cmd</code></b> — this is what launches the app.
-            <div class="zh">双击 <b><code>CEVTUO-RWP2EPUB.cmd</code></b> —— 这就是启动入口。</div></li>
+          <li class="hi"><b>Double-click <code>CEVTUO-RWP.cmd</code></b> — this is what launches the app.
+            <div class="zh">双击 <b><code>CEVTUO-RWP.cmd</code></b> —— 这就是启动入口。</div></li>
 
           <li>If Windows shows <i>“Windows protected your PC”</i>, click <b>More info → Run anyway</b>.
             <div class="zh">若弹出“Windows 已保护你的电脑”,点 <b>更多信息 → 仍要运行</b>。</div></li>
@@ -270,7 +390,7 @@
         <div class="launch">
           <b>How to launch</b>
           <p>There is <b>no <code>.exe</code> to install</b> and no installer to run.
-            The entry point is <code>CEVTUO-RWP2EPUB.cmd</code> inside the folder you just
+            The entry point is <code>CEVTUO-RWP.cmd</code> inside the folder you just
             extracted — <b>double-click it</b> and the app window opens by itself. That is
             the one and only thing you need to click.</p>
           <ul>
@@ -278,12 +398,12 @@
               <code>python\</code> and <code>pylibs\</code> folders sitting next to it.
               Copying the <code>.cmd</code> out on its own will not work.</li>
             <li><b>Want it on your desktop?</b> Right-click
-              <code>CEVTUO-RWP2EPUB.cmd</code> → <b>Send to → Desktop (create shortcut)</b>.</li>
+              <code>CEVTUO-RWP.cmd</code> → <b>Send to → Desktop (create shortcut)</b>.</li>
             <li><b>Closing the window leaves the local service running</b>, which is why
               opening the app again is instant. It only listens on <code>127.0.0.1</code> —
               nothing is sent anywhere. To shut it down completely, double-click
               <code>停止服务.cmd</code> (Stop service).</li>
-            <li>Books are saved to <code>%LOCALAPPDATA%\CEVTUO-RWP2EPUB</code>.</li>
+            <li>Books are saved to <code>%LOCALAPPDATA%\CEVTUO-RWP</code>.</li>
             <li>Pages are rendered with a Chromium browser. Windows ships with Edge, so
               there is nothing extra to install.</li>
             <li>Python and every dependency are already inside the folder — you do not
@@ -292,22 +412,23 @@
           <div class="zh">
             <b>怎么启动</b><br/>
             这个包<b>没有 .exe 安装程序</b>,也不需要安装。启动入口就是你刚解压出来的文件夹里的
-            <b><code>CEVTUO-RWP2EPUB.cmd</code></b> —— <b>双击它</b>,应用窗口会自己弹出来。
+            <b><code>CEVTUO-RWP.cmd</code></b> —— <b>双击它</b>,应用窗口会自己弹出来。
             要点的就这一个文件。<br/>
             · <b>整个文件夹要放在一起</b>:<code>.cmd</code> 需要它旁边的 <code>python\</code> 和
             <code>pylibs\</code>,单独把 .cmd 拷走是用不了的。<br/>
-            · 想放桌面:右键 <code>CEVTUO-RWP2EPUB.cmd</code> → <b>发送到 → 桌面快捷方式</b>。<br/>
+            · 想放桌面:右键 <code>CEVTUO-RWP.cmd</code> → <b>发送到 → 桌面快捷方式</b>。<br/>
             · <b>关掉窗口后本地服务仍在后台运行</b>,所以再次打开是秒开。它只监听
             <code>127.0.0.1</code>,不会把任何东西发到外面。要彻底关掉,双击
             <code>停止服务.cmd</code>。<br/>
-            · 书保存在 <code>%LOCALAPPDATA%\CEVTUO-RWP2EPUB</code>。<br/>
+            · 书保存在 <code>%LOCALAPPDATA%\CEVTUO-RWP</code>。<br/>
             · 渲染网页用 Chromium 内核浏览器,Windows 自带 Edge,不用另外装。<br/>
             · Python 和全部依赖都已经在文件夹里,<b>不需要你装任何东西</b>。
           </div>
         </div>
       </div>
 
-    </div>
+      </div>
+    </details>
   </section>
 
   <footer>
@@ -315,7 +436,7 @@
     <p class="wordmark">CEVTUO CLVNCHET</p>
     <p class="wordmark2">CEVTUOGRND</p>
     <div class="rule"></div>
-    <p class="fine">© 2026 cevtuo · CEVTUO-RWP2EPUB</p>
+    <p class="fine">© 2026 cevtuo · CEVTUO-RWP</p>
   </footer>
 </div>
 </body>

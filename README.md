@@ -1,10 +1,10 @@
-# CEVTUO-RWP2EPUB
+# CEVTUO-RWP
 
 把**网页、网站内链接、RSS 订阅、Markdown** 做成 EPUB 电子书。原生桌面应用，自带运行时，下载即用。
 
 **author: cevtuo**
 
-项目主页：https://cevtuocjw.github.io/CEVTUO-RWP2EPUB/
+项目主页：https://cevtuocjw.github.io/CEVTUO-RWP/
 
 ---
 
@@ -12,15 +12,15 @@
 
 | 平台 | 文件 | 说明 |
 |---|---|---|
-| macOS | `CEVTUO-RWP2EPUB-macOS.dmg` | Apple Silicon · 约 100 MB |
-| Windows | `CEVTUO-RWP2EPUB-windows.zip` | Windows 10/11 x64 · 约 37 MB |
+| macOS | `CEVTUO-RWP-macOS.dmg` | Apple Silicon · 约 100 MB |
+| Windows | `CEVTUO-RWP-windows.zip` | Windows 10/11 x64 · 约 37 MB |
 
 在 [Releases](../../releases/latest) 页下载。
 
 > **macOS 首次打开**：ad-hoc 签名，未经 Apple 公证，会被 Gatekeeper 拦。请**右键 → 打开**，
-> 或执行 `xattr -dr com.apple.quarantine /Applications/CEVTUO-RWP2EPUB.app`。
+> 或执行 `xattr -dr com.apple.quarantine /Applications/CEVTUO-RWP.app`。
 >
-> **Windows**：解压后双击 `CEVTUO-RWP2EPUB.cmd`。
+> **Windows**：解压后双击 `CEVTUO-RWP.cmd`。
 
 **安装包自带 Python 运行时和全部依赖** —— 目标机器不需要装 Python、不需要 pip、不需要 venv。
 
@@ -48,7 +48,7 @@
 > 可自行添加或者更换修改自己的 rss 实例。
 > 已打包我的日常关注 rss 进入扩展作为默认例子。
 
-### rssdailyepub书库
+### 书库
 - 合集电子书按合集分文件夹
 - 每日书按日期分文件夹，点进去看当天的每一本
 - **书库位置可改**，改的时候已生成的书会一起搬过去
@@ -107,8 +107,8 @@ swiftc -O -target arm64-apple-macosx11.0 -o main main.swift -framework Cocoa -fr
 
 ## 数据位置
 
-- macOS：`~/Library/Application Support/CEVTUO-RWP2EPUB`
-- Windows：`%LOCALAPPDATA%\CEVTUO-RWP2EPUB`
+- macOS：`~/Library/Application Support/CEVTUO-RWP`
+- Windows：`%LOCALAPPDATA%\CEVTUO-RWP`
 
 里面有 `output/`（每日书）、`books/`（合集导出）、`history/`、`state/`、`logs/`。
 

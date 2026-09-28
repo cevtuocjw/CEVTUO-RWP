@@ -1,6 +1,6 @@
 @echo off
 rem ============================================================
-rem  CEVTUO-RWP2EPUB —— Windows 启动器
+rem  CEVTUO-RWP —— Windows 启动器
 rem
 rem  和 macOS 版一样的目标:开一个**独立窗口**的应用,不是浏览器标签页。
 rem  Windows 10/11 一定自带 Edge(Chromium 内核),用它的 --app 模式
@@ -12,7 +12,7 @@ setlocal enabledelayedexpansion
 set "DIR=%~dp0"
 set "PORT=8611"
 set "URL=http://127.0.0.1:%PORT%"
-set "DATA=%LOCALAPPDATA%\CEVTUO-RWP2EPUB"
+set "DATA=%LOCALAPPDATA%\CEVTUO-RWP"
 
 if not exist "%DATA%\logs" mkdir "%DATA%\logs" 2>nul
 
@@ -24,7 +24,7 @@ rem ---- 找运行时:优先用自带的 ----
 set "PY=%DIR%python\python.exe"
 if not exist "%PY%" set "PY=%DIR%.venv\Scripts\python.exe"
 if not exist "%PY%" (
-    echo [CEVTUO-RWP2EPUB] 找不到 Python 运行时:
+    echo [CEVTUO-RWP] 找不到 Python 运行时:
     echo   %DIR%python\python.exe
     echo 请重新解压安装包,不要只复制其中一部分文件。
     pause
@@ -44,7 +44,7 @@ for /l %%i in (1,1,30) do (
     if not errorlevel 1 goto open
     timeout /t 1 /nobreak >nul
 )
-echo [CEVTUO-RWP2EPUB] 本地服务启动失败,请看:
+echo [CEVTUO-RWP] 本地服务启动失败,请看:
 echo   %DATA%\logs\server.log
 pause
 exit /b 1

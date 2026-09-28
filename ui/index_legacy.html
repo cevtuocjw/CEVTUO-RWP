@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>RSS 每日 EPUB 管理器</title>
+<style>
+:root{--bd:#e3e6ea;--ink:#222;--mut:#767a80;--acc:#2a6bb0;--ok:#1d7a3e;
+  --warn:#b26a00;--bad:#b02a2a}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,'PingFang SC','Microsoft YaHei',Segoe UI,sans-serif;
+  background:#f7f8fa;color:var(--ink);font-size:14px}
+header{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--bd);
+  padding:10px 18px;display:flex;gap:12px;align-items:center;z-index:5;flex-wrap:wrap}
+header h1{font-size:17px;margin:0;font-weight:700}
+button{border:1px solid var(--bd);background:#fff;border-radius:8px;padding:5px 11px;
+  cursor:pointer;font-size:12.5px}
+button.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+button:disabled{opacity:.5;cursor:not-allowed}
+.bar{flex:1}
+main{padding:14px 18px 40px;max-width:1060px;margin:0 auto}
+section{background:#fff;border:1px solid var(--bd);border-radius:12px;
+  padding:14px 16px;margin:12px 0}
+h2.sec{font-size:15px;margin:0 0 10px}
+.dates{display:flex;flex-wrap:wrap;gap:6px}
+.dates button{font-variant-numeric:tabular-nums}
+.dates button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:8px}
+.stat{border:1px solid var(--bd);border-radius:10px;padding:8px 10px}
+.stat b{font-size:18px;display:block}
+.stat small{color:var(--mut)}
+details{border:1px solid var(--bd);border-radius:10px;margin:8px 0;background:#fff}
+summary{cursor:pointer;padding:9px 12px;list-style:none;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+summary::-webkit-details-marker{display:none}
+summary .grow{flex:1}
+.badge{border-radius:99px;padding:1px 9px;font-size:12px}
+.b-n{background:#eef2f6;color:#445}
+.b-full{background:#e3f3e8;color:var(--ok)}
+.b-part{background:#fff2dd;color:var(--warn)}
+.b-bad{background:#fbe4e4;color:var(--bad)}
+details .body{padding:4px 12px 12px;border-top:1px dashed var(--bd)}
+.feedrow{border-top:1px solid var(--bd)}
+.feedrow:first-child{border-top:none}
+.arts{font-size:13px;margin:6px 0 0 2px;line-height:1.9}
+.arts .m{display:inline-block;min-width:44px;text-align:center;border-radius:6px;font-size:11px;margin-right:6px;padding:0 4px}
+.m-partial{background:#fff2dd;color:var(--warn)}
+.m-full,.m-feed_full,.m-public,.m-cookie,.m-amp_print,.m-ext,.m-browser{background:#e3f3e8;color:var(--ok)}
+.m-blocked,.m-error{background:#fbe4e4;color:var(--bad)}
+.books li{display:flex;gap:8px;align-items:center;border-top:1px dashed var(--bd);padding:7px 2px;flex-wrap:wrap}
+.books li:first-child{border-top:none}
+.sz{color:var(--mut);font-size:12px}
+ul{margin:0;padding:0;list-style:none}
+.mut{color:var(--mut);font-size:12px}
+.gencat{font-size:11.5px;padding:2px 9px;color:var(--acc);border-color:#cfe0f2}
+#err{color:var(--bad)}
+pre.log{background:#131417;color:#cfd6df;border-radius:10px;padding:10px;font-size:11px;max-height:220px;overflow:auto}
+#status,.mutline{font-size:12px;color:var(--mut)}
+</style>
+</head>
+<body>
+<header>
+  <h1>📚 RSS 每日 EPUB</h1>
+  <button id="btnGen" class="primary">⚡ 生成/刷新今天</button>
+  <button id="btnForce" style="background:#c0392b;border-color:#c0392b;color:#fff">🌀 强制重刷</button>
+  <div class="bar"></div>
+  <div id="status" class="mutline"></div>
+  <div id="prog" class="mutline"></div>
+</header>
+<main>
+  <section id="datesBox" hidden>
+    <h2 class="sec">选择日期</h2>
+    <div class="dates" id="dates"></div>
+  </section>
+
+  <section>
+    <h2 class="sec">今日概览 <span id="todaylab" class="mut"></span></h2>
+    <div class="grid" id="topcards"></div>
+    <div id="err" class="mut"></div>
+  </section>
+
+  <section id="bookBox" hidden>
+    <h2 class="sec">📄 已生成的书籍</h2>
+    <ul class="books" id="books"></ul>
+  </section>
+
+  <section id="catBox" hidden>
+    <h2 class="sec">分类 / 源 统计(点击展开,分类标题右侧可单独重生成)</h2>
+    <div id="cats"></div>
+  </section>
+
+  <section>
+    <h2 class="sec">运行日志 <button style="float:right" onclick="loadLog()">刷新</button></h2>
+    <pre class="log" id="log"></pre>
+  </section>
+</main>
+
+<script>
+const $=s=>document.querySelector(s);
+window.addEventListener('error',e=>{ try{$('#status').textContent='页面出错:'+e.message;}catch(_){}});
+let curDate=''; let today='';
+const mb=n=>n>1048576?(n/1048576).toFixed(1)+' MB':(n/1024).toFixed(0)+' KB';
+const MODE_ZH={full:'全文',public:'公开',cookie:'登录态',amp_print:'变体',ext:'外接',
+  feed_full:'RSS全文',browser:'Chrome',partial:'仅摘要',blocked:'未取得',error:'异常'};
+const localDate=()=>{const d=new Date();d=new Date(d.getTime()-d.getTimezoneOffset()*60000);return d.toISOString().slice(0,10);};
+async function j(url,opt){const r=await fetch(url,opt);return r.json();}
+
+function zeroCards(tip){
+  $('#topcards').innerHTML=`<div class="stat"><b>–</b><small>收录篇数</small></div>
+   <div class="stat"><b>–</b><small>取得全文</small></div>
+   <div class="stat"><b>–</b><small>仅摘要</small></div>
+   <div class="stat"><b>–</b><small>未取得</small></div>
+   <div class="stat"><b>–</b><small>分类</small></div>
+   <div class="stat"><b>–</b><small>epub</small></div>`;
+  $('#err').textContent=tip||'今天还没有数据 —— 点左上角「生成/刷新今天」,后台会自动跑(几分钟)。';
+  $('#bookBox').hidden=true; $('#catBox').hidden=true;
+}
+async function loadDate(dt){
+  const [rep,books]=await Promise.all([j('/api/report?date='+dt),j('/api/books?date='+dt)]);
+  if(rep.err){ $('#bookBox').hidden=true; $('#catBox').hidden=true;
+    if(dt===today){zeroCards();} return; }
+  $('#err').textContent='';
+  const by={}; rep.categories.forEach(c=>c.feeds.forEach(f=>{for(const k of ['n','full','partial','blocked'])by[k]=(by[k]||0)+f[k];}));
+  const full=by.full??0, part=by.partial??0, bad=by.blocked??0;
+  $('#topcards').innerHTML=`
+    <div class="stat"><b>${by.n??0}</b><small>收录篇数</small></div>
+    <div class="stat"><b>${full}</b><small>取得全文</small></div>
+    <div class="stat"><b style="color:var(--warn)">${part}</b><small>仅摘要</small></div>
+    <div class="stat"><b style="color:var(--bad)">${bad}</b><small>未取得</small></div>
+    <div class="stat"><b>${rep.categories.length}</b><small>分类</small></div>
+    <div class="stat"><b>${(books.books||[]).length}</b><small>epub</small></div>`;
+  const bb=books.books||[];
+  $('#bookBox').hidden=bb.length===0;
+  $('#books').innerHTML=bb.map(b=>
+    `<li><strong>${b.name}</strong><span class="sz">${mb(b.size)}</span>
+       <button onclick="openPath('${b.path}')">打开位置</button>
+       <button onclick="openPath('${b.path}',1)">打开阅读</button></li>`).join('');
+  $('#catBox').hidden=false;
+  $('#cats').innerHTML=rep.categories.map(c=>{
+    const tF=c.feeds.reduce((x,f)=>x+f.full,0);
+    const tP=c.feeds.reduce((x,f)=>x+f.partial,0);
+    const tB=c.feeds.reduce((x,f)=>x+f.blocked,0);
+    const feeds=c.feeds.map(f=>`
+      <div class="feedrow"><details>
+       <summary><span>📰 <strong>${f.feed}</strong></span><span class="grow"></span>
+         <span class="badge b-n">${f.n}篇</span><span class="badge b-full">全文${f.full}</span>
+         <span class="badge b-part">摘要${f.partial}</span><span class="badge b-bad">未取${f.blocked}</span></summary>
+       <div class="body"><div class="arts">${(f.articles||[]).map(a=>
+         `<div><span class="m m-${a.m}">${MODE_ZH[a.m]||a.m}</span>`+
+         `<a href="${a.l}" target="_blank" rel="noopener">${a.t}</a>`+
+         (a.m==='partial'||a.m==='blocked'||a.m==='error'?` <span class="mut">· ${a.d||''}</span>`:'')+
+         `</div>`).join('')}</div></div></details></div>`).join('');
+    const esc=c.name.replace(/"/g,'&quot;');
+    return `<details class="cat"><summary>
+        <span>🗂 <span class="cat">${c.name}</span></span>
+        <button class="gencat" data-cat="${esc}">↻ 重生成此分类</button>
+        <span class="grow"></span>
+        <span class="badge b-n">${c.n}篇</span><span class="badge b-full">全文${tF}</span>
+        <span class="badge b-part">摘要${tP}</span><span class="badge b-bad">未取${tB}</span></summary>
+      <div class="body">${feeds}</div></details>`;
+  }).join('');
+  bindGen();
+}
+function bindGen(){
+  document.querySelectorAll('.gencat').forEach(b=>b.onclick=e=>{
+    e.stopPropagation(); gen(b.dataset.cat);});
+}
+async function select(dt){
+  document.querySelectorAll('#dates button').forEach(x=>x.classList.remove('on'));
+  [...document.querySelectorAll('#dates button')].find(x=>x.textContent===dt)?.classList.add('on');
+  curDate=dt; loadDate(dt);
+}
+async function init(){
+  today=localDate(); $('#todaylab').textContent='('+today+')';
+  $('#btnGen').onclick=()=>gen('');
+  $('#btnForce').onclick=()=>gen('',true);
+  const d=await j('/api/dates'); const dates=d.dates||[];
+  if(dates.length){
+    $('#datesBox').hidden=false;
+    dates.forEach(dt=>{const b=document.createElement('button');b.textContent=dt;
+      b.onclick=()=>select(dt);$('#dates').appendChild(b);});
+    const pick=dates.includes(today)?today:dates[0];
+    document.querySelectorAll('#dates button').forEach(x=>x.classList.toggle('on',x.textContent===pick));
+    curDate=pick; await loadDate(pick);
+  } else { curDate=today; zeroCards(); }
+  poll(); loadLog();
+}
+function setRunning(r){
+  $('#btnGen').disabled=r;
+  $('#btnForce').disabled=r;
+  document.querySelectorAll('.gencat').forEach(b=>b.disabled=r);
+}
+let pendingReload=false;
+async function gen(cat,force){
+  setRunning(true);
+  $('#status').textContent=cat?`正在重生成「${cat}」…`:'正在生成今天…';
+  if(force) $('#status').textContent='强制重刷:先清理残留再开始…';
+  const ep=force?'/api/force':'/api/generate';
+  try{
+    const resp=await fetch(ep+(cat?'?cat='+encodeURIComponent(cat):''),{method:'POST'});
+    if(resp.ok||resp.status===409){       // 409=已在跑,继续等它结束
+      pendingReload=true; poll(true); return;
+    }
+    setRunning(false);
+    $('#status').textContent=`启动失败 HTTP ${resp.status}`;
+  }catch(e){
+    setRunning(false);
+    $('#status').textContent='连不上本机服务,请确认“启动管理器”还在运行:'+e;
+  }
+}
+async function poll(force){
+  let s; try{ s=await j('/api/status'); }catch(e){ $('#status').textContent='服务未响应'; return; }
+  const r=s.running;
+  const msg=s.message||'';
+  if(s.stage&&s.stage!=='完成') $('#prog').textContent=(s.stage||'')+(s.total?` ${s.done}/${s.total}`:'')+(msg?` · ${msg}`:'');
+  else $('#prog').textContent=msg;
+  setRunning(r);
+  if(r){ setTimeout(()=>poll(true),1500); return; }
+  $('#status').textContent=(s.ok===false?'运行出错,看下方日志':'空闲');
+  if(pendingReload||force||msg){
+    pendingReload=false;
+    const d=await j('/api/dates').catch(()=>({dates:[]}));
+    const ds=d.dates||[];
+    if(ds.length){ const pick=ds.includes(today)?today:ds[0];
+      document.querySelectorAll('#dates button').forEach(x=>x.classList.toggle('on',x.textContent===pick));
+      curDate=pick; await loadDate(pick); $('#datesBox').hidden=false;}
+    else { curDate=today; zeroCards(); }
+    loadLog();
+  }
+}
+function openPath(p,read){ fetch('/api/open?target='+encodeURIComponent(p)+(read?'&read=1':'')); }
+async function loadLog(){ $('#log').textContent=(await j('/api/logtail?n=60')).lines.join('\n'); }
+(async()=>{await init();})();
+</script>
+</body>
+</html>

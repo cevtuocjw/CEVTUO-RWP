@@ -352,7 +352,13 @@ def launch(port=DEFAULT_PORT, headless=False):
 
 def kill_chrome():
     """关掉自动化浏览器。两个平台的进程管理命令完全不同:
-    macOS 用 pkill,Windows 没有 pkill,得走 PowerShell 按命令行匹配。"""
+    macOS 用 pkill,Windows 没有 pkill,得走 PowerShell 按命令行匹配。
+
+    关掉之后必须让 _ext_done 复位 —— 下次起浏览器要重新走一遍
+    Extensions.loadUnpacked,否则扩展会"加载了但没权限"。
+    """
+    global _ext_done
+    _ext_done = False
     if IS_WIN:
         ps = ("Get-CimInstance Win32_Process | "
               "Where-Object { $_.CommandLine -like "
@@ -370,10 +376,74 @@ def kill_chrome():
     time.sleep(1.0)
 
 
+def load_unpacked_via_cdp(port=DEFAULT_PORT):
+    """用 CDP 的 Extensions.loadUnpacked 真正加载未打包扩展。
+
+    ⚠️⚠️ 为什么不能只靠 --load-extension(这是踩了很久才定位到的坑):
+        Chrome 153 下,--load-extension 能让扩展"出现在扩展列表里",
+        但**不给 host 权限** —— extensions-internals 里 explicit_host 始终是 0,
+        于是 declarativeNetRequest 规则一条都不生效,付费墙照样挡着。
+        必须走 CDP 的 Extensions.loadUnpacked,才会按 manifest 声明的
+        host_permissions 真正授权。
+
+    实测(同一篇 FT 文章):
+        只有 --load-extension      → DOM 里 9 个 <p>,抽出 1053 字(付费墙预览)
+        加上 loadUnpacked          → DOM 里 23 个 <p>,抽出 3625 字(完整正文)
+    """
+    paths = unpacked_extension_paths()
+    if not paths:
+        return []
+    try:
+        v = requests.get(f"http://127.0.0.1:{port}/json/version",
+                         timeout=8).json()
+        ws = websocket.create_connection(v["webSocketDebuggerUrl"], timeout=30)
+    except Exception as e:
+        _log(f"连不上浏览器调试口: {e}")
+        return []
+    loaded, mid = [], 0
+    for p in paths:
+        mid += 1
+        try:
+            ws.send(json.dumps({"id": mid,
+                                "method": "Extensions.loadUnpacked",
+                                "params": {"path": p}}))
+            ws.settimeout(45)
+            while True:
+                m = json.loads(ws.recv())
+                if m.get("id") == mid:
+                    rid = (m.get("result") or {}).get("id")
+                    if rid:
+                        loaded.append((Path(p).name, rid))
+                    else:
+                        _log(f"loadUnpacked 未返回 id: "
+                             f"{json.dumps(m, ensure_ascii=False)[:160]}")
+                    break
+        except Exception as e:
+            _log(f"loadUnpacked 失败 {p}: {e}")
+    try:
+        ws.close()
+    except Exception:
+        pass
+    return loaded
+
+
+_ext_done = False
+
+
 def ensure(port=DEFAULT_PORT):
-    if port_alive(port):
-        return True, ""
-    return launch(port)
+    """确保浏览器可用,并且**未打包扩展已经真正拿到权限**。"""
+    global _ext_done
+    if not port_alive(port):
+        ok, err = launch(port)
+        if not ok:
+            return False, err
+    if not _ext_done:
+        loaded = load_unpacked_via_cdp(port)
+        if loaded:
+            _log("已通过 CDP 授权未打包扩展: "
+                 + ", ".join(f"{n}" for n, _ in loaded))
+        _ext_done = True
+    return True, ""
 
 
 # ------------------------------------------------------------------- CDP -----
