@@ -31,6 +31,7 @@ UI_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(CODE))
 
 import capture          # noqa: E402
+import coverart         # noqa: E402
 import export_epub      # noqa: E402
 import extract_page     # noqa: E402
 import imports          # noqa: E402
@@ -49,7 +50,7 @@ PORT = 8611
 # ⚠️ 以前设置页那行「版本」显示的是 capture.status()["version"],那是 **Chrome 的版本**,
 # 不是本软件的。label 写的确实是「浏览器版本」,但用户看到的就一个版本号,
 # 会当成软件版本 —— 加这一行区分开。
-APP_VERSION = "1.1"
+APP_VERSION = "1.3"
 
 # ⚠️ 这个名字不能叫 log —— 下面几行就有一个 def log(*a)。
 # 叫 log 的话会被那个函数覆盖,而 AttributeError 出现在两个很难查的地方:
@@ -168,32 +169,52 @@ def _unique_path(d: Path, name: str) -> Path:
     return d / f"{stem}-{int(time.time())}{suf}"
 
 
-def _delete_books_of(cid):
-    """删合集时把它生成过的 epub 一起删掉。
+def _books_of_collection(cid):
+    """这个合集生成过的所有 epub。
 
-    ⚠️ 只删**索引里明确记着属于它**的,以及老结构 books/<id>/ 里的。
-    不做「按标题前缀删」—— 合集标题互为前缀时那会误删隔壁合集的书。
+    ⚠️ 只认**索引里明确记着属于它**的,以及老结构 books/<id>/ 里的。
+    不做「按标题前缀认」—— 合集标题互为前缀时(「科技」/「科技日报」)
+    那会认到隔壁合集的头上。
     """
     bdir = store.books_dir()
+    out = []
     idx = _read_index()
-    gone = []
-    for name, rec in list(idx.items()):
-        if not isinstance(rec, dict) or rec.get("cid") != cid:
-            continue
-        p = bdir / name
-        try:
+    for name, rec in idx.items():
+        if isinstance(rec, dict) and rec.get("cid") == cid:
+            p = bdir / name
             if p.exists():
-                p.unlink()
-                gone.append(str(p))
-        except Exception as e:
-            slog.warning("删书失败 %s: %s", p, e)
-        idx.pop(name, None)
-    _write_index(idx)
+                out.append(p)
     d = bdir / cid                       # 老结构
     if d.is_dir():
-        gone += [str(p) for p in d.glob("*.epub")]
+        out += sorted(d.glob("*.epub"))
+    return out
+
+
+def _delete_books_of(cid):
+    """删合集时把它生成过的 epub 一起删掉。"""
+    bdir = store.books_dir()
+    gone = []
+    for p in _books_of_collection(cid):
+        try:
+            p.unlink()
+            gone.append(str(p))
+        except Exception as e:
+            slog.warning("删书失败 %s: %s", p, e)
+    idx = _read_index()
+    for name in [Path(g).name for g in gone]:
+        idx.pop(name, None)
+    _write_index(idx)
+    d = bdir / cid
+    if d.is_dir():
         shutil.rmtree(d, ignore_errors=True)
     return gone
+
+
+def _forget_index(names):
+    idx = _read_index()
+    for n in names:
+        idx.pop(n, None)
+    _write_index(idx)
 
 
 def library():
@@ -313,10 +334,14 @@ def do_export(ctx, cid, opts):
         else:
             ctx.progress(done, total)
 
-    export_epub.build(coll, arts, out, opts, on_progress=prog)
+    rep = export_epub.build(coll, arts, out, opts, on_progress=prog) or {}
     _register_book(out, cid)             # 平铺之后靠索引认归属
     return {"path": str(out), "name": out.name, "chapters": len(arts),
-            "size": out.stat().st_size}
+            "size": out.stat().st_size,
+            # 图片账单:界面要显示「下了多少张 / 哪些没下到」,并给重试按钮
+            "images": {"wanted": rep.get("wanted", 0), "ok": rep.get("ok", 0),
+                       "failed": rep.get("failed", [])},
+            "collectionId": cid}
 
 
 # ------------------------------------------------------------ RSS 生成 -------
@@ -443,6 +468,89 @@ def _cover_from_commons(q, n=8):
     return out
 
 
+def _cover_from_openverse(q, n=8):
+    """Openverse —— 免费、不需要 key 的**通用图片**搜索。
+
+    ⚠️ 前三个源都是**书**的 API。查「Ft-093026」这种自己起的合集名一无所获,
+    而 Google Books 还会直接 429。用户搜封面想要的是「给我几张像样的图」,
+    所以必须有一个不限于书的通用源。
+    """
+    import requests
+    r = requests.get("https://api.openverse.org/v1/images/",
+                     params={"q": q, "page_size": n}, headers=COVER_UA,
+                     timeout=12)
+    r.raise_for_status()
+    out = []
+    for it in (r.json().get("results") or []):
+        thumb = it.get("thumbnail") or it.get("url")
+        if not thumb:
+            continue
+        out.append({"url": it.get("url") or thumb, "thumb": thumb,
+                    "title": (it.get("title") or "")[:80],
+                    "source": "Openverse"})
+    return out
+
+
+def _cover_from_wikipedia(q, n=6):
+    """维基百科条目的代表图 —— **对任意关键词最有用的一条**。
+
+    ⚠️ 前面几个源都是「书」的库:查得到《Sapiens》,查不到「东京 街道 夜景」,
+    更查不到用户自拟的合集名(实测中文查询四个源全部返回 0)。
+    维基是按**条目**匹配的,中英双语都覆盖,泛化能力最强。
+    """
+    import requests
+    out = []
+    for host in ("zh.wikipedia.org", "en.wikipedia.org"):
+        try:
+            r = requests.get(f"https://{host}/w/api.php",
+                             params={"action": "query", "format": "json",
+                                     "generator": "search", "gsrsearch": q,
+                                     "gsrlimit": n, "prop": "pageimages",
+                                     "pithumbsize": "800"},
+                             headers=COVER_UA, timeout=10)
+            r.raise_for_status()
+            pages = ((r.json().get("query") or {}).get("pages") or {})
+        except Exception:
+            continue
+        for p in pages.values():
+            t = (p.get("thumbnail") or {}).get("source")
+            if not t:
+                continue
+            out.append({"url": t, "thumb": t, "source": "Wikipedia",
+                        "title": p.get("title") or ""})
+    return out
+
+
+# ⚠️ Google Books 放在**最后**:从本机这个出口 IP 访问它几乎每次都是 429,
+#    放前面只会白等 12 秒超时,而且它一失败就会在错误列表里占第一位,
+#    把「其它源真的没搜到」这件事盖过去。
+COVER_SOURCES = (_cover_from_wikipedia, _cover_from_openverse,
+                 _cover_from_openlibrary, _cover_from_commons,
+                 _cover_from_google)
+
+
+def search_covers(q, per_source=8):
+    """四个源都试一遍,合并去重。
+
+    返回 (results, errs)。**errs 单独回** —— 「一个都没搜到」和
+    「源全挂了」是两件事:前者换个词就行,后者换词也没用。
+    """
+    results, errs = [], []
+    for fn in COVER_SOURCES:
+        try:
+            results += fn(q, per_source)
+        except Exception as e:
+            errs.append(f"{fn.__name__.replace('_cover_from_', '')}: "
+                        f"{str(e)[:60]}")
+    seen, uniq = set(), []
+    for it in results:
+        if it["url"] in seen:
+            continue
+        seen.add(it["url"])
+        uniq.append(it)
+    return uniq, errs
+
+
 # ------------------------------------------------------------------ API ------
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -537,6 +645,53 @@ class Handler(BaseHTTPRequestHandler):
                 self._serve_static()
         except Exception as e:
             json_resp(self, {"err": str(e)}, 500)
+
+    def _delete_group(self, b):
+        """把**一整组**书删掉 —— 书库卡片上那个 ✕。
+
+        ⚠️ 只删生成出来的 epub,**不删合集本身、也不删里面的文章**。
+        用户说的是「把这个框也删掉,因为内容也删掉了」—— 框之所以消失,
+        正是因为里面一本书都不剩了(界面只显示有书的合集)。
+        文章还在,随时能重新导出;连文章一起抹掉就找不回来了。
+        """
+        kind = (b.get("kind") or "").strip()
+        key = (b.get("key") or "").strip()
+        if not key:
+            return {"ok": False, "err": "缺少参数"}
+        if kind == "collection":
+            if not store.get_collection(key):
+                return {"ok": False, "err": "合集不存在"}
+            targets = _books_of_collection(key)
+        elif kind == "date":
+            d = store.output_dir() / key
+            if not d.is_dir():
+                return {"ok": False, "err": "这一天的书已经不在了"}
+            targets = sorted(d.glob("*.epub"))
+        else:
+            return {"ok": False, "err": "未知的分组类型"}
+
+        removed, failed = [], []
+        for p in targets:
+            try:
+                p.unlink()
+                removed.append(str(p))
+            except Exception as e:
+                failed.append({"path": str(p), "why": str(e)[:80]})
+        if kind == "collection":
+            _forget_index([Path(x).name for x in removed])
+        else:
+            # 日期文件夹空了就一起收掉,否则库里会留一堆空文件夹,
+            # 而它们在外观上和"有书的"一模一样。
+            d = store.output_dir() / key
+            try:
+                if d.is_dir() and not any(d.iterdir()):
+                    d.rmdir()
+            except Exception as e:
+                slog.warning("清空文件夹失败 %s: %s", d, e)
+        slog.info("整组删除 %s/%s:成功 %d,失败 %d",
+                  kind, key, len(removed), len(failed))
+        return {"ok": True, "removed": removed, "failed": failed,
+                "count": len(removed)}
 
     def _delete_book(self, b):
         """删一本书,连同磁盘上的文件。
@@ -644,6 +799,23 @@ class Handler(BaseHTTPRequestHandler):
             return self._cover_search(b)
         if r == "/api/collection/coverUrl":
             return self._save_cover_url(b)
+        if r == "/api/cover/fillMissing":
+            return self._fill_missing_covers(b)
+        if r == "/api/cover/fromUrl":
+            return self._cover_from_url(b)
+        if r == "/api/cover/reset":
+            # 把封面清掉 ⇒ 下次 /api/cover 会按「只有书名和作者」重新生成
+            c = store.get_collection(b.get("id") or "")
+            if not c:
+                return {"ok": False, "err": "合集不存在"}
+            d = store.lib_dir() / "covers"
+            for old in d.glob(f"{c['id']}.*"):
+                try:
+                    old.unlink()
+                except Exception:
+                    pass
+            store.update_collection(c["id"], cover="")
+            return {"ok": True}
 
         # ---------------------------------------------------- 章节 ----
         if r == "/api/article/save":
@@ -697,6 +869,9 @@ class Handler(BaseHTTPRequestHandler):
         # 删一本书(书库右键)。同时把本地文件删掉。
         if r == "/api/book/delete":
             return self._delete_book(b)
+        # 删一整组(书库卡片上的 ✕,不管里面有几本)
+        if r == "/api/library/deleteGroup":
+            return self._delete_group(b)
 
         # ---------------------------------------------------- 导入 ----
         if r == "/api/import/urls":
@@ -795,12 +970,28 @@ class Handler(BaseHTTPRequestHandler):
             })
             return {"ok": True, "settings": s}
         if r == "/api/rss/schedule/save":
-            store.set_settings({
-                "schedule_enabled": bool(b.get("enabled")),
-                "schedule_mode": b.get("mode") or "daily",
-                "schedule_hour": int(b.get("hour") or 9),
-                "schedule_minute": int(b.get("minute") or 0),
-            })
+            patch = {"schedule_enabled": bool(b.get("enabled")),
+                     "schedule_mode": b.get("mode") or "daily"}
+            # 一天里的多个询问时刻,界面传 times 数组。
+            # ⚠️ 老的单 hour/minute 也得认 —— 只改前端不改这里的话,
+            #    界面上那两个输入框改了完全没用(存进去的字段后端已经不读了),
+            #    而页面上不会有任何报错。
+            ts = b.get("times")
+            clean = []
+            if isinstance(ts, list):
+                for t in ts:
+                    try:
+                        h, m = int(t.get("hour")), int(t.get("minute", 0) or 0)
+                    except Exception:
+                        continue
+                    if 0 <= h <= 23 and 0 <= m <= 59:
+                        clean.append({"hour": h, "minute": m})
+            if not clean and b.get("hour") is not None:
+                clean = [{"hour": int(b.get("hour") or 9),
+                          "minute": int(b.get("minute") or 0)}]
+            if clean:
+                patch["schedule_times"] = clean
+            store.set_settings(patch)
             return scheduler.apply()
         if r == "/api/rss/force_run":
             st = store.get_settings()
@@ -842,104 +1033,285 @@ class Handler(BaseHTTPRequestHandler):
         return {"ok": False, "err": f"未知接口 {r}"}
 
     def _serve_cover(self, cid):
-        """按合集 id 把封面图发出去。
+        """按合集 id 把封面图发出去。**没有封面就现场生成一张。**
 
         ⚠️ 必须走 HTTP,不能用 file://。界面是从 http://127.0.0.1:8611 加载的,
         浏览器会把 http 页面里的 file:// 子资源**直接拦掉**。
-        表现就是「封面上传成功了、但显示不出来」—— 这个只有真的打开界面才看得见,
+        表现就是「封面上传成功了、但显示不出来」—— 只有真的打开界面才看得见,
         接口层面全是 200。
+
+        ⚠️ 没有封面时不再 404,而是生成一张「只有书名和作者」的图。
+        用户的要求:「如果没有封面,那就是你只写书名和作者」。
+        界面上永远有个东西可看,比一个空白框强。
         """
         c = store.get_collection(cid)
-        cov = (c or {}).get("cover") or ""
-        if not cov:
-            self.send_error(404, "no cover")
+        if not c:
+            self.send_error(404, "no collection")
             return
-        p = Path(cov).expanduser()
-        if not p.is_file():
-            self.send_error(404, "cover missing")
+        data, _ct = self._cover_bytes(c)
+        if not data:
+            self.send_error(404, "cover unavailable")
             return
-        try:
-            data = p.read_bytes()
-        except Exception as e:
-            slog.warning("读封面失败 %s: %s", p, e)
-            self.send_error(404, "cover unreadable")
-            return
-        ct = mimetypes.guess_type(p.name)[0] or "image/jpeg"
         self.send_response(200)
-        self.send_header("Content-Type", ct)
+        self.send_header("Content-Type", "image/jpeg")
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")   # 换封面要立刻看见
         self.end_headers()
         self.wfile.write(data)
 
+    def _cover_bytes(self, c):
+        """拿这个合集的封面字节;没有就生成并落盘,顺带写回 cover 字段。"""
+        cov = (c.get("cover") or "").strip()
+        if cov:
+            p = Path(cov).expanduser()
+            if p.is_file():
+                try:
+                    return p.read_bytes(), (mimetypes.guess_type(p.name)[0]
+                                            or "image/jpeg")
+                except Exception as e:
+                    slog.warning("读封面失败 %s: %s", p, e)
+        try:
+            data = coverart.generate(c.get("title"), c.get("author"))
+        except Exception as e:
+            slog.warning("生成封面失败 %s: %s", c.get("title"), e)
+            return None, ""
+        try:
+            d = store.lib_dir() / "covers"
+            d.mkdir(parents=True, exist_ok=True)
+            p = d / f"{c['id']}.jpg"
+            p.write_bytes(data)
+            store.update_collection(c["id"], cover=str(p))
+        except Exception as e:
+            slog.warning("封面落盘失败: %s", e)
+        return data, "image/jpeg"
+
+    def _cover_from_url(self, b):
+        """从一个**链接**里把图抓出来给用户挑。
+
+        用户的要求:封面不是"上来就搜",而是「我给一个链接,你去这个链接里
+        把图获取下来」。所以这里是:给图片地址就直接用;给网页地址就把它
+        里面的图都列出来(og:image / twitter:image 优先 —— 那是站点自己
+        认定的代表图,比正文里随便一张配图靠谱得多)。
+        """
+        import requests
+        from urllib.parse import urljoin
+        raw = (b.get("url") or "").strip()
+        if not raw.lower().startswith(("http://", "https://")):
+            return {"ok": False, "err": "请填一个 http/https 开头的链接", "images": []}
+        # ① 直接就是一张图
+        if re.search(r"\.(jpe?g|png|webp|gif|bmp|avif)(\?|$)", raw, re.I):
+            return {"ok": True, "images": [{"url": raw, "thumb": raw,
+                                            "source": "直链", "title": ""}],
+                    "kind": "image"}
+        # ② 是一个网页 —— 把里面的图挑出来
+        try:
+            r = requests.get(raw, headers=COVER_UA, timeout=20)
+            r.raise_for_status()
+            page = r.text
+        except Exception as e:
+            return {"ok": False, "err": f"打不开这个链接: {str(e)[:80]}",
+                    "images": []}
+        return {"ok": True, "kind": "page",
+                "images": self._images_in_page(page, raw, urljoin),
+                "page_title": (re.search(r"<title[^>]*>(.*?)</title>",
+                                         page, re.S | re.I) or [None, ""])[1].strip()[:120]}
+
+    @staticmethod
+    def _images_in_page(page, base, urljoin):
+        """按可信度排序:og:image > twitter:image > 正文里够大的 <img>。"""
+        out, seen = [], set()
+
+        def add(u, src, w=0):
+            if not u:
+                return
+            u = urljoin(base, u.strip())
+            if not u.lower().startswith(("http://", "https://")):
+                return
+            if u in seen or re.search(r"\.svg(\?|$)", u, re.I):
+                return
+            seen.add(u)
+            out.append({"url": u, "thumb": u, "source": src, "w": w})
+
+        # ⚠️ 先整段切出 <meta ...> 再逐个解析**属性**,不要写「属性顺序固定」的正则。
+        #    我第一版是 `<meta[^>]+property=…[^>]*content=…`,结果一条都匹配不上
+        #    —— 页面里属性顺序、换行、大小写都不一定。于是 og:image 全落空,
+        #    「站点自己认定的代表图」这条最有价值的线索被白白丢掉,
+        #    24 张结果全落到"页面图片"里按宽度瞎排。
+        for m in re.finditer(r"<meta\b[^>]*>", page, re.I | re.S):
+            tag = m.group(0)
+            k = re.search(r'(?:property|name)\s*=\s*["\']([^"\']+)["\']', tag, re.I)
+            v = re.search(r'content\s*=\s*["\']([^"\']*)["\']', tag, re.I)
+            if not (k and v):
+                continue
+            key = k.group(1).strip().lower()
+            if key in ("og:image", "og:image:secure_url", "og:image:url"):
+                add(v.group(1), "og:image")
+            elif key in ("twitter:image", "twitter:image:src"):
+                add(v.group(1), "twitter:image")
+
+        for m in re.finditer(r"<img\b[^>]*>", page, re.I | re.S):
+            tag = m.group(0)
+            w = 0
+            wm = re.search(r'\bwidth\s*=\s*["\']?(\d+)', tag, re.I)
+            if wm:
+                w = int(wm.group(1))
+            # srcset 里常放着真正的高清图 —— 只看 src 会拿到一张占位小图。
+            # 取最后一个候选(通常最大)。
+            ss = re.search(r'\bsrcset\s*=\s*["\']([^"\']+)["\']', tag, re.I)
+            if ss:
+                cands = [c.strip().split()[0] for c in ss.group(1).split(",")
+                         if c.strip()]
+                if cands:
+                    add(cands[-1], "页面图片", w or 1200)
+            src = (re.search(r'\bsrc\s*=\s*["\']([^"\']+)', tag, re.I) or
+                   re.search(r'\bdata-src\s*=\s*["\']([^"\']+)', tag, re.I) or
+                   re.search(r'\bdata-original\s*=\s*["\']([^"\']+)', tag, re.I))
+            if src:
+                add(src.group(1), "页面图片", w)
+        # 大图排前面(og:image 永远最前)
+        head = [x for x in out if x["source"] in ("og:image", "twitter:image")]
+        tail = sorted([x for x in out if x not in head],
+                      key=lambda x: -x.get("w", 0))
+        return (head + tail)[:24]
+
     def _cover_search(self, b):
-        """三个源都试一遍,能出几个算几个。"""
         q = (b.get("q") or "").strip()
         if not q:
             return {"ok": False, "err": "先输入关键词", "results": []}
-        results, errs = [], []
-        for fn in (_cover_from_google, _cover_from_openlibrary,
-                   _cover_from_commons):
-            try:
-                results += fn(q)
-            except Exception as e:
-                errs.append(f"{fn.__name__.replace('_cover_from_', '')}: {e}")
-        seen, uniq = set(), []
-        for it in results:
-            if it["url"] in seen:
-                continue
-            seen.add(it["url"])
-            uniq.append(it)
+        uniq, errs = search_covers(q)
         if not uniq and errs:
-            # 三个源全挂 ≠ 没有结果。要分开告诉用户,不然会以为是关键词的问题
-            return {"ok": False, "err": "; ".join(errs)[:300], "results": []}
+            # 全挂 ≠ 没搜到。分开告诉用户,不然会以为是关键词的问题
+            return {"ok": False, "err": "; ".join(errs)[:300],
+                    "results": [], "errs": errs}
         return {"ok": True, "results": uniq[:24], "errs": errs}
 
-    def _save_cover_url(self, b):
-        """把在线搜到的封面**下载下来存本地**。
+    def _store_cover(self, cid, raw):
+        """把一张原始图**压上书名和作者**之后落盘。
 
-        ⚠️ 不把远程 URL 直接写进 cover 字段:界面是按 file:// 加载本地图的,
-        存 URL 的话对方一改防盗链、或者用户离线,封面就变成一片空白。
+        ⚠️ 两种做封面的方式(本地上传 / 从链接取)都走这里 ——
+        用户的要求是「不论哪种方式,都要把书名和作者写在图片上面」。
+        分开写两份的话,迟早只改一处。
         """
-        import requests
-        cid, url = b.get("id"), (b.get("url") or "").strip()
-        if not cid or not url.lower().startswith(("http://", "https://")):
-            return {"ok": False, "err": "封面地址无效"}
+        c = store.get_collection(cid)
+        if not c:
+            return {"ok": False, "err": "合集不存在"}
         try:
-            r = requests.get(url, headers=COVER_UA, timeout=20)
-            r.raise_for_status()
-            data = r.content
+            data = coverart.compose(raw, c.get("title"), c.get("author"))
         except Exception as e:
-            return {"ok": False, "err": f"下载封面失败: {e}"}
-        if len(data) < 800:
-            return {"ok": False, "err": "这张图太小,可能不是封面"}
-        ct = (r.headers.get("Content-Type") or "").lower()
-        ext = ".png" if "png" in ct else ".webp" if "webp" in ct else ".jpg"
+            # 合成失败也别把图丢了 —— 直接用原图,总比没有封面强
+            slog.warning("封面合成失败 %s: %s", c.get("title"), e)
+            data = raw
         d = store.lib_dir() / "covers"
         d.mkdir(parents=True, exist_ok=True)
-        p = d / f"{cid}{ext}"
+        # ⚠️ 统一存 .jpg。以前按 Content-Type 存不同扩展名,
+        #    换封面时旧文件留在那儿,变成「换过了但看起来没换」。
+        for old in d.glob(f"{cid}.*"):
+            if old.name != f"{cid}.jpg":
+                try:
+                    old.unlink()
+                except Exception:
+                    pass
+        p = d / f"{cid}.jpg"
         try:
             p.write_bytes(data)
         except Exception as e:
-            return {"ok": False, "err": f"保存封面失败: {e}"}
+            return {"ok": False, "err": f"保存失败: {str(e)[:80]}"}
         store.update_collection(cid, cover=str(p))
         return {"ok": True, "cover": str(p), "bytes": len(data)}
+
+    def _download_cover(self, cid, url):
+        """把一张在线图下载下来,压上书名/作者,设为封面。"""
+        import requests
+        if not cid or not (url or "").lower().startswith(("http://", "https://")):
+            return {"ok": False, "err": "封面地址无效"}
+        # ⚠️ 很多图床校验 Referer(防盗链),只发一个 UA 会吃 401/403。
+        #    实测:从 Guardian 页面抓到的图,不带 Referer 直接 401
+        #    「missing signature」。和抓正文一样退着试三个梯队。
+        from urllib.parse import urlparse as _up
+        u = _up(url)
+        origin = f"{u.scheme}://{u.netloc}/"
+        raw, why = b"", "下载失败"
+        for hdr in ({"User-Agent": COVER_UA["User-Agent"], "Referer": origin},
+                    dict(COVER_UA),
+                    {"User-Agent": "Mozilla/5.0 (compatible; CEVTUO-RWP/1.3)",
+                     "Referer": origin}):
+            try:
+                r = requests.get(url, headers=hdr, timeout=20,
+                                 allow_redirects=True)
+                if r.status_code == 200 and r.content:
+                    raw = r.content
+                    break
+                why = f"HTTP {r.status_code}"
+            except Exception as e:
+                why = str(e)[:80]
+        if not raw:
+            return {"ok": False, "err": why}
+        if len(raw) < 800:
+            return {"ok": False, "err": "图片太小,可能不是封面"}
+        return self._store_cover(cid, raw)
+
+    def _save_cover_url(self, b):
+        return self._download_cover(b.get("id"), b.get("url"))
+
+    def _fill_missing_covers(self, b):
+        """给还没有封面的合集批量补一张。
+
+        ⚠️ 重点不是"能补",是**把没补上的也报出来**。
+        用户原话:「下载图片没有反馈,是否哪些没下载下来,要不要补充等
+        (专门把没获取到的再获取一遍)」。所以这里回两份名单:
+        filled 补成功的、failed 没补上的(带原因),前端照单重试。
+        """
+        only = b.get("ids") or None
+        got, failed = [], []
+        for c in store.list_collections():
+            if only is not None and c["id"] not in only:
+                continue
+            if (c.get("cover") or "").strip():
+                continue
+            q = (c.get("title") or "").strip()
+            if not q:
+                failed.append({"id": c["id"], "title": c["title"],
+                               "why": "合集没有名字,不知道搜什么"})
+                continue
+            try:
+                cands, errs = search_covers(q, 6)
+            except Exception as e:
+                failed.append({"id": c["id"], "title": c["title"],
+                               "why": f"搜索出错: {str(e)[:60]}"})
+                continue
+            if not cands:
+                failed.append({"id": c["id"], "title": c["title"],
+                               "why": "四个源都没搜到图" if not errs
+                               else f"搜索源出错({errs[0][:50]})"})
+                continue
+            # 前几张都试一下 —— 搜到的第一张经常下不下来(防盗链/404)
+            why = "没有一张能下载"
+            for cand in cands[:4]:
+                res = self._download_cover(c["id"], cand["url"])
+                if res.get("ok"):
+                    got.append({"id": c["id"], "title": c["title"],
+                                "source": cand["source"],
+                                "bytes": res.get("bytes")})
+                    why = ""
+                    break
+                why = res.get("err") or why
+            if why:
+                failed.append({"id": c["id"], "title": c["title"], "why": why})
+        return {"ok": True, "filled": got, "failed": failed,
+                "total": len(got) + len(failed)}
 
     def _save_cover(self, b):
         cid, data = b.get("id"), b.get("data_url") or ""
         if not cid or "," not in data:
             return {"ok": False, "err": "没有图片数据"}
-        head, b64 = data.split(",", 1)
-        ext = ".png"
-        m = re.search(r"image/(\w+)", head)
-        if m:
-            ext = "." + ("jpg" if m.group(1) == "jpeg" else m.group(1))
-        d = store.lib_dir() / "covers"
-        d.mkdir(parents=True, exist_ok=True)
-        p = d / f"{cid}{ext}"
-        p.write_bytes(base64.b64decode(b64))
-        store.update_collection(cid, cover=str(p))
-        return {"ok": True, "cover": str(p)}
+        _head, b64 = data.split(",", 1)
+        try:
+            raw = base64.b64decode(b64)
+        except Exception as e:
+            return {"ok": False, "err": f"图片数据坏了: {str(e)[:60]}"}
+        if len(raw) < 400:
+            return {"ok": False, "err": "这张图太小了"}
+        return self._store_cover(cid, raw)
 
 
 def main():

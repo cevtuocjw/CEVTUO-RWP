@@ -5,6 +5,7 @@
 图片默认**并发**下载并内嵌(Kindle 上离线可读),失败自动跳过不报错,
 全过程向界面报进度 —— 早先串行下载 51 张图要 94 秒且毫无反馈,看起来就像卡死。
 """
+import html as _htmlmod
 import logging
 import os
 import re
@@ -32,7 +33,54 @@ td, th { border:1px solid #ddd; padding:.35em .6em; }
 .titlepage h1 { font-size:2.2em; }
 .titlepage p { color:#666; }
 p.meta { font-size:.8em; color:#666; margin:.2em 0 1em; }
+nav.topbar { font-size:.84em; padding:.5em .75em; margin:0 0 1.1em;
+  border:1px solid #e4e4e4; border-radius:8px; background:#fafafa; }
+nav.topbar a.nb { color:#2a6bb0; text-decoration:none; }
+nav.topbar span.sep { color:#c4c4c4; margin:0 .55em; }
 """
+
+# 正文开头的标题标签(抽取器经常把页面 <h1> 一起收进来)
+_LEAD_HEAD = re.compile(r"^\s*<h([1-4])\b[^>]*>(.*?)</h\1>\s*", re.I | re.S)
+_TAGS = re.compile(r"<[^>]+>")
+_WS = re.compile(r"\s+")
+
+
+def _strip_dup_title(body, title):
+    """正文开头如果已经有一模一样的标题,把它去掉。
+
+    ⚠️ 抽取器(trafilatura / readability)常把页面上的 <h1> 标题一起收进正文,
+    而导出时我们**又**在正文前面加一个 <h2> —— 阅读器里同一篇文章的标题
+    出现两次。用户说的「有时候重复」,是因为带不带取决于那一页的结构。
+
+    只在**文字确实与标题相同**时才删,避免误删正文自己的小标题。
+    """
+    m = _LEAD_HEAD.match(body or "")
+    if not m:
+        return body
+    head = _htmlmod.unescape(_TAGS.sub("", m.group(2)))
+    a = _WS.sub("", head).lower()
+    b = _WS.sub("", str(title or "")).lower()
+    if not a or not b:
+        return body
+    if a == b or (len(b) >= 8 and (a.startswith(b) or b.startswith(a))):
+        return body[m.end():]
+    return body
+
+
+def _nav_bar(i, total):
+    """章节顶部的「上一篇 / 目录 / 下一篇」。
+
+    RSS 每日书一直有这套导航,合集书以前完全没有 —— 在阅读器里读完一篇
+    想接着看下一篇,只能退出去点目录再翻。放在**章节最前面**,不用滚到底。
+    """
+    parts = []
+    if i > 0:
+        parts.append(f'<a class="nb" href="ch{i - 1}.xhtml">‹ 上一篇</a>')
+    parts.append('<a class="nb" href="nav.xhtml">☰ 目录</a>')
+    if i < total - 1:
+        parts.append(f'<a class="nb" href="ch{i + 1}.xhtml">下一篇 ›</a>')
+    return ('<nav class="topbar">'
+            + '<span class="sep">|</span>'.join(parts) + '</nav>')
 
 
 def _esc(s):
@@ -46,20 +94,35 @@ def _xhtml(title, body):
             f'<body>{body}</body></html>')
 
 
+_UA_DESKTOP = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+               "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36")
+
+
 def _fetch_image(url, timeout=15):
+    """取一张图,返回 (内容, Content-Type, 失败原因)。
+
+    ⚠️ 图片下不下来**绝大多数不是"图没了"**,而是对方校验 Referer / UA(防盗链)。
+    同一个 URL 带 Referer 能下、不带 Referer 也能下 —— 只试一次就把这张图判死,
+    书里就永远缺这一张,而用户完全不知道少了什么。
+    所以这里按三个梯队退着试,并把最后一次的原因带回去给界面看。
+    """
     import requests
-    try:
-        r = requests.get(url, timeout=timeout, headers={
-            "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                           "AppleWebKit/537.36 (KHTML, like Gecko) "
-                           "Chrome/124 Safari/537.36"),
-            "Referer": f"{urlparse(url).scheme}://{urlparse(url).netloc}/",
-        })
-        if r.status_code == 200 and r.content:
-            return r.content, r.headers.get("Content-Type", "")
-    except Exception:
-        pass
-    return None, ""
+    origin = f"{urlparse(url).scheme}://{urlparse(url).netloc}/"
+    tries = (
+        {"User-Agent": _UA_DESKTOP, "Referer": origin},
+        {"User-Agent": _UA_DESKTOP},                       # 有的站反而讨厌 Referer
+        {"User-Agent": "Mozilla/5.0 (compatible; CEVTUO-RWP/1.3)"},
+    )
+    why = "未知原因"
+    for hdr in tries:
+        try:
+            r = requests.get(url, timeout=timeout, headers=hdr)
+            if r.status_code == 200 and r.content:
+                return r.content, r.headers.get("Content-Type", ""), ""
+            why = f"HTTP {r.status_code}"
+        except Exception as e:
+            why = str(e)[:90]
+    return None, "", why
 
 
 EXT_MT = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
@@ -76,7 +139,15 @@ class ImageEmbedder:
         self.on_progress = on_progress
         self.map = {}
         self.blobs = []
+        self.failed = []          # [{url, why}] —— 要给用户看的"没下到"名单
         self._lk = threading.Lock()
+
+    def report(self):
+        """这次一共要下几张、下到几张、哪几张没下到。"""
+        want = len(self.map)
+        got = len(self.blobs)
+        return {"wanted": want, "ok": got,
+                "failed": sorted(self.failed, key=lambda x: x["url"])}
 
     def collect(self, htmls):
         """先把所有要下的图片 URL 收集去重(最多 limit 张)。"""
@@ -113,10 +184,13 @@ class ImageEmbedder:
         with self._lk:
             if url in self.map:
                 return self.map[url]
-        content, ctype = _fetch_image(url)
+        content, ctype, why = _fetch_image(url)
         if not content:
             with self._lk:
                 self.map[url] = None
+                # ⚠️ 以前这里是静默跳过。结果是「书里少了几张图」而用户
+                #    永远不知道少了什么、为什么少 —— 必须记下来报出去。
+                self.failed.append({"url": url, "why": why or "下载失败"})
             return None
         ext = os.path.splitext(urlparse(url).path)[1].lower()
         if ext not in EXT_MT:
@@ -181,7 +255,7 @@ def build(collection, articles, out_path, opts=None, on_progress=None):
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     title = collection.get("title") or "未命名合集"
-    author = collection.get("author") or "CEVTUO-RWP"
+    author = collection.get("author") or "cev"
     lang = collection.get("language_code") or "zh-CN"
 
     usable = [a for a in articles if (a.get("parsed_html") or "").strip()]
@@ -208,6 +282,15 @@ def build(collection, articles, out_path, opts=None, on_progress=None):
             book.set_cover(f"cover{ext}", Path(cover_path).read_bytes())
         except Exception as e:
             log.warning("封面读取失败: %s", e)
+    else:
+        # 没有封面就生成一张「只有书名和作者」的。
+        # 书架上一本光秃秃的书,比一本印着名字的素封面难认多了 ——
+        # 用户的要求就是「没有封面,那就只写书名和作者」。
+        try:
+            import coverart
+            book.set_cover("cover.jpg", coverart.generate(title, author))
+        except Exception as e:
+            log.warning("生成封面失败: %s", e)
 
     # ---- 图片:先全部并发下载,再写章节 ----
     embedder = ImageEmbedder(limit=int(opts.get("max_images") or 800),
@@ -231,7 +314,9 @@ def build(collection, articles, out_path, opts=None, on_progress=None):
             meta.append(_esc(a["created_at"][:10]))
         if elink:
             meta.append(f'<a href="{_esc(elink)}">原文链接</a>')
-        inner = (f'<h2>{_esc(a.get("title") or "未命名")}</h2>'
+        body = _strip_dup_title(body, a.get("title"))
+        inner = (_nav_bar(i, total)
+                 + f'<h2>{_esc(a.get("title") or "未命名")}</h2>'
                  + (f'<p class="meta">{" · ".join(meta)}</p>' if meta else "")
                  + f'<div class="content">{body}</div>')
         ch = epub.EpubHtml(uid=f"ch{i}", file_name=f"ch{i}.xhtml",
@@ -266,7 +351,11 @@ def build(collection, articles, out_path, opts=None, on_progress=None):
     book.add_item(epub.EpubNav())
     report(total, total, "打包 epub…")
     epub.write_epub(str(out_path), book)
-    return out_path
+    # 把图片下载的账一并交出去 —— 用户要看「这次下了多少张、哪些没下到」,
+    # 以前这里只回一个路径,等于没说。
+    rep = embedder.report()
+    rep["path"] = str(out_path)
+    return rep
 
 
 def build_linear(book_title, date_str, sections, images, out_path,

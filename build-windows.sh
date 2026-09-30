@@ -17,9 +17,9 @@ OLD="$WB/CEVTUO-RWP2EPUB"
 NEW="$WB/CEVTUO-RWP"
 OUT="$BUILD/dist/CEVTUO-RWP-windows.zip"
 
-FILES=(browser.py capture.py export_epub.py extract_page.py fulltext.py
-       imports.py jobs.py opam.py opml.py paths.py rss2epub.py run_scheduled.py
-       sanitize.py scheduler.py store.py ui windows)
+# ⚠️ 清单不能写死 —— 新增 coverart.py 时就是因为手写清单漏了它,
+#    app 包里没有这个模块、启动直接 ModuleNotFoundError,而构建全绿。
+FILES=($(cd "$SRC" && ls *.py 2>/dev/null | sort) ui windows)
 
 say(){ printf '\n\033[1m== %s ==\033[0m\n' "$1"; }
 

@@ -234,6 +234,84 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         return nil
     }
 
+    // ------------------------------------------------- 原生对话框 / 文件选择
+    //
+    // ⚠️⚠️ WKWebView **默认不实现** JS 的 alert / confirm / prompt,也不弹文件选择框。
+    //    这不是"没样式",是**根本没有默认行为**:
+    //      · 不实现 runJavaScriptConfirmPanel → `confirm()` 直接返回 false
+    //        ⇒ 页面里每一处 `if(!confirm(...)) return;` 都永远提前返回。
+    //          表现是删合集 / 删章节 / 删书点了**完全没反应,控制台一个错都不报**。
+    //      · 不实现 runOpenPanel → `<input type="file">` **永远不弹框**
+    //        ⇒ 上传封面点了没动静。
+    //    这两个 bug 用浏览器或 Playwright 都测不出来 —— 只有 WKWebView 会这样。
+
+    func webView(_ wv: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo,
+                 completionHandler: @escaping () -> Void) {
+        let a = NSAlert()
+        a.messageText = kAppName
+        a.informativeText = message
+        a.addButton(withTitle: "好")
+        if let w = window { a.beginSheetModal(for: w) { _ in completionHandler() } }
+        else { a.runModal(); completionHandler() }
+    }
+
+    func webView(_ wv: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo,
+                 completionHandler: @escaping (Bool) -> Void) {
+        let a = NSAlert()
+        a.messageText = kAppName
+        a.informativeText = message
+        a.addButton(withTitle: "确定")
+        a.addButton(withTitle: "取消")
+        if let w = window {
+            a.beginSheetModal(for: w) { r in
+                completionHandler(r == .alertFirstButtonReturn)
+            }
+        } else {
+            completionHandler(a.runModal() == .alertFirstButtonReturn)
+        }
+    }
+
+    func webView(_ wv: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String,
+                 defaultText: String?, initiatedByFrame frame: WKFrameInfo,
+                 completionHandler: @escaping (String?) -> Void) {
+        let a = NSAlert()
+        a.messageText = prompt
+        a.addButton(withTitle: "确定")
+        a.addButton(withTitle: "取消")
+        let tf = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        tf.stringValue = defaultText ?? ""
+        a.accessoryView = tf
+        if let w = window {
+            a.beginSheetModal(for: w) { r in
+                completionHandler(r == .alertFirstButtonReturn ? tf.stringValue : nil)
+            }
+        } else {
+            completionHandler(a.runModal() == .alertFirstButtonReturn ? tf.stringValue : nil)
+        }
+    }
+
+    /// 「上传封面」走这里。不实现的话点按钮什么都不会发生。
+    func webView(_ wv: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
+                 initiatedByFrame frame: WKFrameInfo,
+                 completionHandler: @escaping ([URL]?) -> Void) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = parameters.allowsDirectories
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.allowedFileTypes = ["png", "jpg", "jpeg", "gif", "webp",
+                                  "heic", "bmp", "tiff"]
+        panel.allowsOtherFileTypes = true
+        if let w = window {
+            panel.beginSheetModal(for: w) { r in
+                completionHandler(r == .OK ? panel.urls : nil)
+            }
+        } else {
+            completionHandler(panel.runModal() == .OK ? panel.urls : nil)
+        }
+    }
+
     func webView(_ wv: WKWebView, didFinish navigation: WKNavigation!) { loading = false }
 }
 

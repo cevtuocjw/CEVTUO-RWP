@@ -278,6 +278,31 @@ svg.ico{width:19px;height:19px;flex:none;display:block;opacity:.85}
 .covitem span{display:block;padding:5px 7px;font-size:10.5px;color:var(--ink-faint);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
+/* ---- 书库卡片上的「清空这一组」✕ ---- */
+.folder{position:relative}
+.fdel{position:absolute;top:5px;right:5px;width:20px;height:20px;padding:0;
+  border-radius:50%;border:1px solid var(--line-soft);cursor:pointer;
+  background:rgba(var(--panel),.9);color:var(--ink-faint);font-size:11px;
+  line-height:1;display:flex;align-items:center;justify-content:center;
+  opacity:0;transition:opacity .15s,color .15s,border-color .15s;
+  font-family:inherit}
+.folder:hover .fdel{opacity:1}
+.fdel:hover{color:#c0392b;border-color:#c0392b}
+.fdel:focus-visible{opacity:1;outline:2px solid var(--accent);outline-offset:1px}
+
+/* ---- 书库按月归档 ---- */
+/* #lib.rss 那一格是 grid-column:1/-1,details 自己撑满整行 */
+details.arch{grid-column:1/-1;margin-bottom:10px}
+details.arch>summary{list-style:none;cursor:pointer;display:flex;align-items:center;
+  gap:10px;padding:10px 13px;border-radius:var(--radius-md);user-select:none;
+  background:rgba(var(--panel),calc(var(--alpha)*.45));
+  border:1px solid var(--line-soft);backdrop-filter:blur(10px)}
+details.arch>summary::-webkit-details-marker{display:none}
+details.arch>summary::after{content:"﹀";margin-left:auto;color:var(--ink-faint);
+  font-size:13px;transition:transform .2s var(--ease)}
+details.arch[open]>summary::after{transform:rotate(180deg)}
+details.arch>summary:hover{border-color:color-mix(in srgb,var(--accent) 28%,transparent)}
+
 /* ---- 弹窗 ---- */
 .mask{position:fixed;inset:0;background:rgba(12,18,28,.34);display:flex;align-items:center;
   justify-content:center;z-index:50;padding:26px;backdrop-filter:blur(3px)}
@@ -428,11 +453,30 @@ const I18N = {
     "ch.refetch":"再次获取","ch.refetching":"获取中…","ch.refetchOk":"已重新获取,共 {n} 字",
     "ch.refetchFail":"重新获取失败:","ch.up":"上移","ch.down":"下移",
     "lib.delBook":"删除这本书",
+    "lib.delGroup":"清空这一组",
+    "lib.delGroupConfirm":"删除《{name}》里的 {n} 本书?\n\n只删生成出来的电子书,合集和里面的文章都保留,随时可以重新导出。",
+    "lib.delGroupConfirmDate":"删除 {name} 这一天的 {n} 本书?\n\n不可撤销。",
+    "lib.delGroupDone":"已删除 {n} 本",
+    "lib.delGroupPartial":"有 {n} 本没删掉",
     "lib.delConfirm":"删除《{name}》?\n本地文件会一起删掉,不可撤销。",
     "lib.orphan":"未归类","lib.orphanNote":"在书库里,但认不出属于哪个合集",
     "cov.search":"在线找封面","cov.searchPh":"书名 / 作者 / 关键词",
     "cov.searching":"正在搜…","cov.noResult":"没找到合适的封面,换个关键词试试",
     "cov.use":"用这张","cov.searchFail":"搜索失败:",
+    "cov.fill":"补齐缺失封面","cov.fillTitle":"批量补封面",
+    "cov.fillSummary":"补上 {ok} 个,没补上 {bad} 个。",
+    "cov.fillOk":"已补上","cov.fillBad":"没补上(可以重试)",
+    "cov.fillNone":"所有合集都已经有封面了。","cov.retryFailed":"重试没补上的",
+    "cov.filling":"正在搜索并下载,合集多的时候要等一会…",
+    "cov.fillHint":"给还没有封面的合集自动搜图;没搜到的会列出来,可以只重试那些",
+    "img.title":"图片下载情况",
+    "img.summary":"这次需要 {want} 张,成功下载 {ok} 张,{bad} 张没获取到。",
+    "img.allOk":"所有图片都下载成功了。",
+    "img.retry":"重新获取没下到的",
+    "cov.byLink":"从链接获取","cov.linkPh":"粘贴一个网页或图片的链接",
+    "cov.byKey":"或者按关键词搜","cov.fromLink":"获取",
+    "cov.plain":"只用书名和作者","cov.linkEmpty":"这个链接里没找到图片",
+    "cov.reset":"已改回「只有书名和作者」",
     "common.import":"导入内容","common.export":"导出 EPUB","common.chapters":"章节管理",
     "common.blank":"＋ 空白页","common.fromUrl":"＋ 从网址添加","common.viewEdit":"查看 / 编辑",
     "common.back":"返回","common.refresh":"刷新","common.new":"新建",
@@ -466,8 +510,10 @@ const I18N = {
     "rss.every3":"每隔三天","rss.off":"取消定时","rss.time":"时间","rss.saveSched":"保存定时设置",
     "rss.runNow":"现在按设置跑一次","rss.jobState":"任务状态","rss.loaded":"已装载",
     "rss.notLoaded":"未装载","rss.lastRun":"上次执行","rss.nextRun":"下次执行",
-    "rss.oldJob":"检测到旧的 rssdaily 定时任务,保存本设置会自动接管",
-    "rss.schedNote":"系统每天在设定时间唤醒一次,「每隔两天 / 三天」由程序判断是否真的生成;收录范围按上面的设置。",
+    "rss.oldJob":"检测到历史定时任务,保存本设置会自动清掉",
+    "rss.askTimes":"询问时刻","rss.today":"今天","rss.todayNone":"还没下载过",
+    "rss.books":"本","rss.nextAsk":"下次询问",
+    "rss.schedNote":"到点会先弹一个框问你,点「开始下载」才真的下,点「今天不用」就跳过。软件没打开也会问 —— 叫醒它的是系统,不是你把界面打开。「每隔两天 / 三天」由程序判断;收录范围按上面的设置。",
     "rss.sources":"RSS 源管理","rss.addFeed":"＋ 添加源","rss.addCat":"＋ 新建分类",
     "rss.importOpml":"导入 OPML","rss.sourcesCount":"个源","rss.cats":"个分类",
     "rss.noSources":"还没有订阅源。点「添加源」或「导入 OPML」。",
@@ -509,11 +555,31 @@ const I18N = {
     "ch.refetch":"Refetch","ch.refetching":"Fetching…","ch.refetchOk":"Refetched — {n} chars",
     "ch.refetchFail":"Refetch failed: ","ch.up":"Move up","ch.down":"Move down",
     "lib.delBook":"Delete book",
+    "lib.delGroup":"Empty this group",
+    "lib.delGroupConfirm":"Delete the {n} books in “{name}”?\n\nOnly the generated EPUBs are removed — the collection and its articles stay, so you can export again anytime.",
+    "lib.delGroupConfirmDate":"Delete the {n} books from {name}?\n\nThis cannot be undone.",
+    "lib.delGroupDone":"Deleted {n}",
+    "lib.delGroupPartial":"{n} could not be deleted",
     "lib.delConfirm":"Delete “{name}”?\nThe local file will be removed too. This cannot be undone.",
     "lib.orphan":"Unfiled","lib.orphanNote":"in the library but not linked to a collection",
     "cov.search":"Find cover online","cov.searchPh":"Title / author / keyword",
     "cov.searching":"Searching…","cov.noResult":"No covers found — try another keyword",
     "cov.use":"Use this","cov.searchFail":"Search failed: ",
+    "cov.fill":"Fill missing covers","cov.fillTitle":"Fill missing covers",
+    "cov.fillSummary":"Filled {ok}, could not fill {bad}.",
+    "cov.fillOk":"Filled","cov.fillBad":"Not filled (you can retry)",
+    "cov.fillNone":"Every collection already has a cover.",
+    "cov.retryFailed":"Retry the failed ones",
+    "cov.filling":"Searching and downloading — this takes a while if you have many collections…",
+    "cov.fillHint":"Finds covers for collections that don't have one yet; the failures are listed so you can retry just those",
+    "img.title":"Image downloads",
+    "img.summary":"{want} images were needed, {ok} downloaded, {bad} could not be fetched.",
+    "img.allOk":"Every image downloaded successfully.",
+    "img.retry":"Re-fetch the missing ones",
+    "cov.byLink":"From a link","cov.linkPh":"Paste a page or image URL",
+    "cov.byKey":"Or search by keyword","cov.fromLink":"Fetch",
+    "cov.plain":"Just title and author","cov.linkEmpty":"No images found at that link",
+    "cov.reset":"Reset to title + author",
     "common.import":"Import","common.export":"Export EPUB","common.chapters":"Chapters",
     "common.blank":"+ Blank page","common.fromUrl":"+ From URL","common.viewEdit":"View / Edit",
     "common.back":"Back","common.refresh":"Refresh","common.new":"New",
@@ -547,6 +613,8 @@ const I18N = {
     "rss.every3":"Every 3 days","rss.off":"Off","rss.time":"Time","rss.saveSched":"Save schedule",
     "rss.runNow":"Run once now","rss.jobState":"Job status","rss.loaded":"loaded",
     "rss.notLoaded":"not loaded","rss.lastRun":"Last run","rss.nextRun":"Next run",
+    "rss.askTimes":"Ask at","rss.today":"Today","rss.todayNone":"not downloaded yet",
+    "rss.books":" books","rss.nextAsk":"Next prompt",
     "rss.oldJob":"Legacy rssdaily job detected — saving will take it over automatically",
     "rss.schedNote":"launchd wakes the app once a day; the every-2/3-days interval is enforced by the app itself. Content range follows the settings above.",
     "rss.sources":"RSS sources","rss.addFeed":"+ Add feed","rss.addCat":"+ New category",
@@ -602,6 +670,12 @@ async function api(path,opt){
   if(!r.ok && j.err) throw new Error(j.err);
   return j;
 }
+// 新建合集时预填的作者名。以前这个框是空的,用户随手填过 'Cow' —— 一旦填错,
+// 那一批电子书的作者就都错了,而且导出之后才发现。
+// 默认的两个询问时刻 —— 和后端 scheduler.DEFAULT_TIMES 保持一致。
+// 界面上拿不到设置时(比如后端还没存过)用它兜底,免得渲染出空输入框。
+const DEF_TIMES = [{hour:9,minute:0},{hour:15,minute:0}];
+const DEFAULT_AUTHOR = 'cev';
 const get = p => api(p);
 const post = (p,b) => api(p,{method:'POST',body:JSON.stringify(b||{})});
 function toast(msg,ms=2800){
@@ -683,7 +757,7 @@ async function renderCollections(){
 function newCollectionModal(){
   modal({title:t('coll.new'),
     body:`<label class="fld"><span>${t('coll.name')}</span><input type="text" id="ncTitle"/></label>
-          <label class="fld"><span>${t('coll.author')}</span><input type="text" id="ncAuthor"/></label>
+          <label class="fld"><span>${t('coll.author')}</span><input type="text" id="ncAuthor" value="${esc(DEFAULT_AUTHOR)}"/></label>
           <label class="fld"><span>${t('coll.lang')}</span><select id="ncLang">
             <option value="zh-CN">zh-CN</option><option value="zh-TW">zh-TW</option>
             <option value="en">en</option><option value="ja">ja</option></select></label>`,
@@ -837,47 +911,74 @@ async function openArticle(aid,onSaved){
 }
 
 /* ============================== 导入 ============================== */
-/* 在线找封面 —— 三个免费源(Google Books / Open Library / Wikimedia),
-   后端合并去重后一次给回来。选中哪张就把图**下载到本地**再设为封面。 */
+/* 做封面。**主路径是「给一个链接」** —— 用户原话:「不是上来就查找,而是
+   我给了一个链接,你去这个链接里面能把图获取下来补充到封面上」。
+   关键词搜索保留成第二条路(它现在真的搜得到东西了)。
+   ⚠️ 所以这里**不再自动开搜** —— 以前一打开就拿合集名去搜,那正是用户不要的。
+   选中的图会被**压上书名和作者**再存下来。 */
 function coverSearchModal(cid, seed){
   modal({title:t('cov.search'), wide:true, okText:null,
-    body:`<div class="row" style="margin-bottom:12px">
+    body:`<div class="row" style="margin-bottom:8px">
+        <input type="text" id="covUrl" class="grow" placeholder="${t('cov.linkPh')}"/>
+        <button class="btn primary" id="covFrom">${t('cov.fromLink')}</button></div>
+      <div class="row" style="margin-bottom:12px">
         <input type="text" id="covQ" class="grow" value="${esc(seed||'')}" placeholder="${t('cov.searchPh')}"/>
-        <button class="btn primary" id="covGo">${t('cov.search')}</button></div>
+        <button class="btn" id="covGo">${t('cov.byKey')}</button></div>
       <div id="covRes"><div class="empty">—</div></div>`});
   const host = $('#modalHost');
-  host.querySelector('.ft').innerHTML = `<button class="btn" onclick="closeModal()">${t('common.close')}</button>`;
+  host.querySelector('.ft').innerHTML =
+    `<button class="btn" id="covPlain">${t('cov.plain')}</button>`
+    + `<button class="btn" onclick="closeModal()">${t('common.close')}</button>`;
   const res = $('#covRes');
-  async function go(){
-    const q = $('#covQ').value.trim();
-    if(!q) return;
-    res.innerHTML = `<div class="empty">${t('cov.searching')}</div>`;
-    let r=null, err='';
-    try{ r = await post('/api/cover/search',{q}); }catch(x){ err = x.message||String(x); }
-    if(!r || !r.ok){
-      // 区分「一个都没搜到」和「三个源全挂了」—— 前者换个词就行,后者换词也没用
-      res.innerHTML = `<div class="empty">${esc((r&&r.err)||err||t('cov.noResult'))}</div>`;
+
+  function paint(list, emptyMsg){
+    if(!list.length){
+      res.innerHTML = `<div class="empty">${esc(emptyMsg||t('cov.noResult'))}</div>`;
       return;
     }
-    if(!r.results.length){ res.innerHTML = `<div class="empty">${t('cov.noResult')}</div>`; return; }
-    res.innerHTML = `<div class="covgrid">${r.results.map((x,i)=>
-        `<div class="covitem" data-cv="${i}" title="${esc(x.title||x.source)}">
-           <img src="${esc(x.thumb)}" loading="lazy" alt=""/>
-           <span>${esc(x.source)}</span></div>`).join('')}</div>`;
+    res.innerHTML = `<div class="covgrid">${list.map((x,i)=>
+      `<div class="covitem" data-cv="${i}" title="${esc(x.title||x.source)}">
+         <img src="${esc(x.thumb)}" loading="lazy" alt=""/>
+         <span>${esc(x.source)}</span></div>`).join('')}</div>`;
     $$('[data-cv]',res).forEach(el=>el.onclick=async()=>{
-      const x = r.results[+el.dataset.cv];
+      const x = list[+el.dataset.cv];
       el.style.opacity = .45;
       let rr=null, e2='';
       try{ rr = await post('/api/collection/coverUrl',{id:cid,url:x.url}); }
       catch(z){ e2 = z.message||String(z); }
       el.style.opacity = 1;
       if(rr && rr.ok){ closeModal(); renderCollection(cid); }
-      else toast(((rr&&rr.err)||e2));
+      else toast((rr&&rr.err)||e2);
     });
   }
-  $('#covGo').onclick = go;
-  $('#covQ').onkeydown = e=>{ if(e.key==='Enter') go(); };
-  if(seed) go();
+  async function busy(fn){
+    res.innerHTML = `<div class="empty">${t('cov.searching')}</div>`;
+    try{ await fn(); }
+    catch(e){ res.innerHTML = `<div class="empty">${esc(e.message||String(e))}</div>`; }
+  }
+
+  $('#covFrom').onclick = ()=>busy(async()=>{
+    const u = $('#covUrl').value.trim();
+    if(!u) return;
+    const r = await post('/api/cover/fromUrl',{url:u});
+    if(!r || !r.ok){ res.innerHTML = `<div class="empty">${esc((r&&r.err)||'')}</div>`; return; }
+    paint(r.images||[], t('cov.linkEmpty'));
+  });
+  $('#covUrl').onkeydown = e=>{ if(e.key==='Enter') $('#covFrom').click(); };
+
+  $('#covGo').onclick = ()=>busy(async()=>{
+    const q = $('#covQ').value.trim();
+    if(!q) return;
+    const r = await post('/api/cover/search',{q});
+    if(!r || !r.ok){ res.innerHTML = `<div class="empty">${esc((r&&r.err)||t('cov.noResult'))}</div>`; return; }
+    paint(r.results||[]);
+  });
+  $('#covQ').onkeydown = e=>{ if(e.key==='Enter') $('#covGo').click(); };
+
+  $('#covPlain').onclick = async ()=>{
+    await post('/api/cover/reset',{id:cid});
+    closeModal(); renderCollection(cid); toast(t('cov.reset'));
+  };
 }
 
 function importModal(cid){
@@ -1006,7 +1107,41 @@ function exportModal(cid){
     okText:t('exp.start'),
     onOk: async ()=>{
       const r = await post('/api/export',{collectionId:cid,embedImages:$('#exImg').checked,removePreface:$('#exPref').checked});
-      closeModal(); openJob(r.job); }});
+      closeModal(); openJob(r.job, j=>showImageReport(j, cid)); }});
+}
+
+/* 导出后的**图片账单**。「这次下了多少张、哪些没下到」,没下到的可以一键重来。
+   用户原话:「要明确列出这次下载了多少张图片,哪些没有获取到,对于没有获取到的
+   有一键去重新再补充获取一次的按钮」。以前是失败静默跳过,书里少几张图
+   而用户完全不知道。 */
+function showImageReport(j, cid){
+  const im = ((j && j.result) || {}).images;
+  if(!im) return;                       // 不是导出任务,不掺和
+  const failed = im.failed || [];
+  modal({title:t('img.title'), wide:true, okText:null,
+    body:`<p class="muted" style="margin:0 0 12px">${
+        t('img.summary').replace('{want}', im.wanted||0)
+                        .replace('{ok}', im.ok||0)
+                        .replace('{bad}', failed.length)}</p>`
+      + (failed.length
+        ? `<table><tbody>${failed.map(f=>`<tr>
+             <td style="font-size:12px;word-break:break-all">${esc(f.url)}</td>
+             <td class="muted" style="width:1%;white-space:nowrap">${esc(f.why||'')}</td>
+           </tr>`).join('')}</tbody></table>`
+        : `<div class="empty">${t('img.allOk')}</div>`)});
+  const h = $('#modalHost');
+  h.querySelector('.ft').innerHTML =
+    (failed.length? `<button class="btn primary" id="imgRetry">${t('img.retry')} (${failed.length})</button>` : '')
+    + `<button class="btn" onclick="closeModal()">${t('common.close')}</button>`;
+  const rb = $('#imgRetry');
+  if(rb) rb.onclick = async ()=>{
+    closeModal();
+    // 重新导出这一本。图片下载现在会换 Referer / UA 退着试三轮,
+    // 上次因为防盗链失败的这一轮多半能下来。
+    const jr = await post('/api/export',{collectionId:cid, embedImages:true,
+                                        removePreface:false});
+    openJob(jr.job, j2=>showImageReport(j2, cid));
+  };
 }
 
 /* ============================ Rssdailyepub ============================ */
@@ -1052,20 +1187,25 @@ async function renderRss(){
             <option value="every3" ${sch.mode==='every3'&&sch.enabled?'selected':''}>${t('rss.every3')}</option>
             <option value="off" ${(!sch.enabled||sch.mode==='off')?'selected':''}>${t('rss.off')}</option>
           </select></label>
-        <label class="fld" style="margin:0"><span>${t('rss.time')}</span>
+        <label class="fld" style="margin:0"><span>${t('rss.askTimes')}</span>
           <div class="row" style="gap:6px">
-            <input type="number" id="sHour" min="0" max="23" value="${sch.hour==null?9:sch.hour}" style="width:70px"/>
-            <span>:</span>
-            <input type="number" id="sMin" min="0" max="59" value="${sch.minute==null?0:sch.minute}" style="width:70px"/>
+            ${(sch.times&&sch.times.length?sch.times:DEF_TIMES).map(tm=>
+              `<span class="row" style="gap:2px">
+                 <input type="number" class="schH" min="0" max="23" value="${tm.hour}" style="width:60px"/>
+                 <span>:</span>
+                 <input type="number" class="schM" min="0" max="59" value="${tm.minute||0}" style="width:60px"/>
+               </span>`).join('<span style="opacity:.35">·</span>')}
           </div></label>
         <button class="btn primary" id="sSave">${t('rss.saveSched')}</button>
         <button class="btn" id="sRun">${t('rss.runNow')}</button>
       </div>
       <div class="kv" style="margin-top:14px">
         <b>${t('rss.jobState')}</b><span>${sch.loaded?`<span class="tag ok">${t('rss.loaded')}</span>`:`<span class="tag warn">${t('rss.notLoaded')}</span>`}
-          ${sch.old_job_loaded?` <span class="tag warn">${t('rss.oldJob')}</span>`:''}</span>
-        <b>${t('rss.lastRun')}</b><span>${esc(sch.last_run||'—')}</span>
-        <b>${t('rss.nextRun')}</b><span>${esc(sch.next_run||'—')}</span>
+          ${(sch.stale_jobs&&sch.stale_jobs.length)?` <span class="tag warn">${t('rss.oldJob')}</span>`:''}</span>
+        <b>${t('rss.today')}</b><span>${(sch.today&&sch.today.length)
+            ? sch.today.map(r=>`<span class="tag ok">${esc(r.time)}${r.count?` · ${r.count}${t('rss.books')}`:''}</span>`).join(' ')
+            : `<span class="muted">${t('rss.todayNone')}</span>`}</span>
+        <b>${t('rss.nextAsk')}</b><span>${esc(sch.next_run||'—')}</span>
       </div>
       <p class="muted" style="margin:12px 0 0">${t('rss.schedNote')}</p>
     </div>
@@ -1095,8 +1235,9 @@ async function renderRss(){
       categories:chosenCats(),sendEmail:$('#gMail').checked,refresh:true});
     watchGen(r.job); };
   $('#sSave').onclick = async ()=>{
+    const H = $$('.schH').map(e=>+e.value), M = $$('.schM').map(e=>+e.value);
     await post('/api/rss/schedule/save',{enabled:$('#sMode').value!=='off',mode:$('#sMode').value,
-      hour:+$('#sHour').value,minute:+$('#sMin').value});
+      times:H.map((h,i)=>({hour:h, minute:M[i]||0}))});
     toast(t('rss.saveSched')); renderRss(); };
   $('#sRun').onclick = async ()=>{ const r = await post('/api/rss/force_run',{}); watchGen(r.job); };
   $('#fAdd').onclick = ()=>feedModal(null,cats,()=>renderRss());
@@ -1192,19 +1333,70 @@ async function renderLibrary(){
       <div class="grid" id="lr"></div></div>`;
   const withBooks = lib.collections.filter(c=>c.books&&c.books.length);
   const lc = $('#lc');
-  lc.innerHTML = withBooks.length
-    ? withBooks.map(c=>`<div class="folder glass" data-c="${c.id}">
-        <div class="t">📁 ${esc(c.title)}</div><div class="muted">${c.books.length}</div></div>`).join('')
+
+  // 一张卡片 = 一组书。右上角的 ✕ 一次把这一组清空 ——
+  // 用户要的是「不管里面有多少本,一次删掉,而且这个框也跟着没了」。
+  // 框之所以会没,是因为库里只显示还有书的组,不是我们单独去删框。
+  const card = (attr, key, title, sub) =>
+    `<div class="folder glass" data-${attr}="${esc(key)}">
+       <button class="fdel" data-del-${attr}="${esc(key)}" title="${t('lib.delGroup')}">✕</button>
+       <div class="t">📁 ${esc(title)}</div>
+       <div class="muted">${sub}</div></div>`;
+
+  // 合集也**按月归档**:以前所有合集平铺在外面,做得越多这栏越糊。
+  const byMonthC = {};
+  withBooks.forEach(c => {
+    const m = (c.created_at || '').slice(0, 7) || '?';
+    (byMonthC[m] = byMonthC[m] || []).push(c);
+  });
+  const cmonths = Object.keys(byMonthC).sort().reverse();
+  lc.innerHTML = cmonths.length
+    ? cmonths.map((m, mi) => {
+        const cs = byMonthC[m];
+        const total = cs.reduce((s, c) => s + c.books.length, 0);
+        return `<details class="arch" ${mi === 0 ? 'open' : ''}>
+          <summary><b>📦 ${esc(m)}</b><span class="muted">${cs.length} ${LANG==='zh'?'个合集':'collections'} · ${total} ${LANG==='zh'?'本':'books'}</span></summary>
+          <div class="grid" style="margin-top:10px">${cs.map(c =>
+            card('c', c.id, c.title,
+                 `${c.books.length} ${LANG==='zh'?'本':'books'}`)).join('')}</div>
+        </details>`;
+      }).join('')
     : `<div class="empty" style="grid-column:1/-1">${t('lib.noColl')}</div>`;
-  $$('[data-c]',lc).forEach(el=>el.onclick=()=>{
+  $$('[data-c]',lc).forEach(el=>el.onclick=ev=>{
+    if(ev.target.closest('.fdel')) return;      // 点 ✕ 时不要顺带把书单也打开
     const c=withBooks.find(x=>x.id===el.dataset.c); bookListModal(c.title,c.books); });
+  $$('[data-del-c]',lc).forEach(el=>el.onclick=ev=>{
+    ev.stopPropagation();
+    const c=withBooks.find(x=>x.id===el.dataset.delC);
+    if(c) deleteGroup('collection', c.id, c.title, c.books.length); });
+
   const lr = $('#lr');
-  lr.innerHTML = lib.rss.length
-    ? lib.rss.map(d=>`<div class="folder glass" data-d="${esc(d.date)}">
-        <div class="t">📁 ${esc(d.date)}</div><div class="muted">${d.count} · ${fmtSize(d.total_size)}</div></div>`).join('')
+  // 每日书同样按月归档 —— 日期格子一多就会糊满整页,想找上个月的要滚半天。
+  const byMonth = {};
+  lib.rss.forEach(d => {
+    const m = (d.date || '').slice(0, 7) || '?';
+    (byMonth[m] = byMonth[m] || []).push(d);
+  });
+  const months = Object.keys(byMonth).sort().reverse();
+  lr.innerHTML = months.length
+    ? months.map((m, mi) => {
+        const days = byMonth[m];
+        const total = days.reduce((s, d) => s + d.count, 0);
+        const size = days.reduce((s, d) => s + d.total_size, 0);
+        return `<details class="arch" ${mi === 0 ? 'open' : ''}>
+          <summary><b>📦 ${esc(m)}</b><span class="muted">${days.length} ${LANG === 'zh' ? '天' : 'days'} · ${total} ${LANG === 'zh' ? '本' : 'books'} · ${fmtSize(size)}</span></summary>
+          <div class="grid" style="margin-top:10px">${days.map(d =>
+            card('d', d.date, d.date, `${d.count} · ${fmtSize(d.total_size)}`)).join('')}</div>
+        </details>`;
+      }).join('')
     : `<div class="empty" style="grid-column:1/-1">${t('lib.noRss')}</div>`;
-  $$('[data-d]',lr).forEach(el=>el.onclick=()=>{
+  $$('[data-d]',lr).forEach(el=>el.onclick=ev=>{
+    if(ev.target.closest('.fdel')) return;
     const d=lib.rss.find(x=>x.date===el.dataset.d); bookListModal(d.date,d.books); });
+  $$('[data-del-d]',lr).forEach(el=>el.onclick=ev=>{
+    ev.stopPropagation();
+    const d=lib.rss.find(x=>x.date===el.dataset.delD);
+    if(d) deleteGroup('date', d.date, d.date, d.count); });
 
   // 平铺之后,索引对不上的书(手动搬过、或别的程序放进去的)也要看得见 ——
   // 悄悄藏起来比报错更糟:用户会以为文件丢了。
@@ -1220,6 +1412,64 @@ async function renderLibrary(){
     $$('[data-o]',lo).forEach(el=>el.onclick=()=>
       bookListModal(t('lib.orphan'),[orphan[+el.dataset.o]]));
   }
+}
+
+/* 批量补封面 —— 把没补上的**列出来**,并且能只重试那些。
+   用户原话:「下载图片没有反馈,是否哪些没下载下来,要不要补充等
+   (专门把没获取到的再获取一遍)」。所以这份报告的重点是失败名单。 */
+async function fillCovers(ids){
+  const host0 = $('#modalHost');
+  modal({title:t('cov.fillTitle'), okText:null,
+    body:`<div class="empty">${t('cov.filling')}</div>`});
+  const host = $('#modalHost');
+  host.querySelector('.ft').innerHTML = '';
+  let r=null, err='';
+  try{ r = await post('/api/cover/fillMissing', ids? {ids} : {}); }
+  catch(x){ err = x.message||String(x); }
+  await renderLibrary();
+  if(!r || !r.ok){
+    modal({title:t('cov.fillTitle'), body:`<div class="empty">${esc((r&&r.err)||err)}</div>`, okText:null});
+    $('#modalHost').querySelector('.ft').innerHTML =
+      `<button class="btn" onclick="closeModal()">${t('common.close')}</button>`;
+    return;
+  }
+  const filled = r.filled||[], failed = r.failed||[];
+  const rows = (arr, mark, okRow) => arr.map(x=>okRow
+      ? `<tr><td>${mark} ${esc(x.title)}</td><td class="muted" style="width:1%">${esc(x.source||'')}</td><td class="muted" style="width:1%">${x.bytes?Math.round(x.bytes/1024)+' KB':''}</td></tr>`
+      : `<tr><td>${mark} ${esc(x.title)}</td><td class="muted" style="font-size:12px">${esc(x.why||'')}</td></tr>`).join('');
+  modal({title:t('cov.fillTitle'), wide:true, okText:null,
+    body: (!filled.length && !failed.length)
+      ? `<div class="empty">${t('cov.fillNone')}</div>`
+      : `<p class="muted" style="margin:0 0 10px">${t('cov.fillSummary').replace('{ok}',filled.length).replace('{bad}',failed.length)}</p>
+         ${filled.length? `<h4 style="margin:12px 0 6px;font-size:13.5px">${t('cov.fillOk')}</h4><table><tbody>${rows(filled,'✓',true)}</tbody></table>`:''}
+         ${failed.length? `<h4 style="margin:16px 0 6px;font-size:13.5px">${t('cov.fillBad')}</h4><table><tbody>${rows(failed,'✗',false)}</tbody></table>`:''}`});
+  const h = $('#modalHost');
+  h.querySelector('.ft').innerHTML =
+    (failed.length? `<button class="btn primary" id="retryFail">${t('cov.retryFailed')} (${failed.length})</button>`:'')
+    + `<button class="btn" onclick="closeModal()">${t('common.close')}</button>`;
+  const rb = $('#retryFail');
+  if(rb) rb.onclick = ()=>{ const only = failed.map(x=>x.id); closeModal(); fillCovers(only); };
+}
+
+/* 一次清空一整组(合集 / 某一天的每日书)。卡片上那个 ✕ 走这里。
+
+   ⚠️ 合集只删**生成出来的 epub**,合集本身和里面的文章都留着 ——
+   用户要的是「框没了」,而框之所以没,是因为里面不剩书了。
+   连文章一起抹掉就找不回来了,而重新导出随时都行。 */
+async function deleteGroup(kind, key, label, n){
+  const msg = (kind === 'collection' ? t('lib.delGroupConfirm')
+                                     : t('lib.delGroupConfirmDate'))
+    .replace('{name}', label).replace('{n}', n);
+  if(!confirm(msg)) return;
+  let r=null, e2='';
+  try{ r = await post('/api/library/deleteGroup',{kind, key}); }
+  catch(x){ e2 = x.message||String(x); }
+  if(r && r.ok){
+    toast(t('lib.delGroupDone').replace('{n}', r.count));
+    if(r.failed && r.failed.length)
+      toast(t('lib.delGroupPartial').replace('{n}', r.failed.length));
+    await renderLibrary();
+  } else toast((r&&r.err)||e2);
 }
 
 function bookListModal(title,books){
