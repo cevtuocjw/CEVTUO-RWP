@@ -7,6 +7,7 @@ Chrome 不可用时自动退回普通 HTTP 抓取,并在结果里标注来源。
 """
 import logging
 import re
+import threading
 
 import capture
 import extract_page
@@ -23,6 +24,48 @@ _JUNK = re.compile(
     r"(enable javascript|verify you are human|just a moment|"
     r"checking your browser|cf-browser-verification|"
     r"please turn javascript on)", re.I)
+
+
+_MD_LINK = re.compile(r"\[[^\]]*\]\(\s*(https?://[^\s)]+)\s*\)")
+_ANGLE = re.compile(r"<(https?://[^>\s]+)>")
+# ⚠️ 字符类里必须排除**中文标点**。不排的话
+#    `https://a.com/1，下一篇：https://b.com/2` 会被当成**一个**网址吞下去。
+_BARE = re.compile(r"https?://[^\s<>\"'()\[\]{},;，。、；：！？（）【】《》"
+                   r"“”‘’…]+")
+
+
+def normalize_urls(text_or_list):
+    """把用户粘进来的东西解析成干净的 URL 列表。
+
+    ⚠️ 用户从浏览器/笔记里复制出来的经常**不是裸网址**,而是 Markdown 链接
+    `[标题](https://…)`。早期直接 `strip()` 就当网址用,于是
+    requests 抛 `No connection adapters were found for '[标题](https://…)'`
+    —— 界面上显示的是「抓取失败」,看起来像网络问题,其实是**格式没解析**。
+
+    支持的格式(一行里混着好几个也行):
+      · 裸网址          https://example.com/a
+      · Markdown 链接   [标题](https://example.com/a)
+      · 尖括号          <https://example.com/a>
+      · 标题 + 网址     Some title https://example.com/a
+      · 后面带中文标点  https://example.com/a，下一篇：…
+    """
+    items = [text_or_list] if isinstance(text_or_list, str) else list(text_or_list)
+    out, seen = [], set()
+    for raw in items:
+        if not raw:
+            continue
+        s = str(raw).strip()
+        if not s:
+            continue
+        # ⚠️ 三遍**都要跑**,不能「找到 Markdown 链接就跳过裸网址」
+        #    —— 一行里常常 Markdown 和裸网址混着,跳过的那些就静默丢了。
+        found = _MD_LINK.findall(s) + _ANGLE.findall(s) + _BARE.findall(s)
+        for u in found:
+            u = u.rstrip(".,;:!?)]}，。；：！？）】》\"'")
+            if u and u not in seen:
+                seen.add(u)
+                out.append(u)
+    return out
 
 
 def http_get(url, timeout=25):
@@ -68,7 +111,22 @@ def browser_error_page(html):
         return f"页面打不开({m.group(1)})"
     if _ERRTEXT.search(html[:6000]):
         return "页面打不开(网络连接被中断)"
+    # ④ 机器人校验中间页 —— 等够了还没放行,就老实说出来。
+    #    ⚠️⚠️ 不认它会怎样:它 500 多字、正文完整、HTTP 200,
+    #    于是**安安静静地变成一章正文**,标题「请稍候…」,正文
+    #    「Financial Times Security Verification …」。
+    #    用户拿到一本「有正文,但正文是校验页」的书,而且没有任何提示。
+    #    (这就是 2026-10-10「FT 只抓到 145 字」的另一半原因。)
+    if capture._looks_interstitial(_text_only(html)):
+        return "被网站的机器人校验挡住(等过 30 秒仍未放行,稍后重试)"
     return ""
+
+
+def _text_only(html):
+    """把 HTML 压成可见文字 —— 只为在拦截页判据里用。"""
+    s = re.sub(r"(?is)<(script|style|noscript)[^>]*>.*?</\1>", " ", html or "")
+    s = re.sub(r"(?s)<[^>]+>", " ", s)
+    return re.sub(r"[ \t\r\f\v]+", " ", s)
 
 
 def _page_text_len(html):
@@ -88,12 +146,20 @@ def _short_err(e):
     return (s[:150] + "…") if len(s) > 150 else s
 
 
-def fetch_html(url, use_chrome=True, timeout=60):
-    """返回 (html, via, err)。via ∈ chrome | http | ''(失败)。"""
+def fetch_html(url, use_chrome=True, timeout=60, should_stop=None):
+    """返回 (html, via, err)。via ∈ chrome | http | ''(失败)。
+
+    ⚠️⚠️ **取消必须穿过去**:`capture.Cancelled` 不能被下面这几个
+    `except Exception` 吃掉。吃掉会发生什么(实测 2026-10-10):
+    Chrome 已经在 0.5 秒内响应了取消并抛出,这里却把它记成"Chrome 渲染失败",
+    然后**转身去试直连** —— 而直连没有取消机制,一个滴流的页面又能挂 25 秒。
+    用户点了取消,整批反而多等 27.6 秒。**取消被降级 = 取消失效。**
+    """
     errs = []
     if use_chrome:
         try:
-            html, err = capture.render(url, timeout=timeout)
+            html, err = capture.render(url, timeout=timeout,
+                                       should_stop=should_stop)
             if html and len(html) > 400:
                 bad = browser_error_page(html)
                 if not bad:
@@ -101,9 +167,14 @@ def fetch_html(url, use_chrome=True, timeout=60):
                 errs.append(bad + " · Chrome")
             elif err:
                 errs.append(err)
+        except capture.Cancelled:
+            raise
         except Exception as e:
             log.warning("Chrome 渲染失败 %s: %s", url, e)
             errs.append(_short_err(e))
+    # 直连之前再问一次 —— 用户可能是在 Chrome 那一段里点的取消。
+    if should_stop and should_stop():
+        raise capture.Cancelled("已取消")
     try:
         html = http_get(url)
         bad = browser_error_page(html)
@@ -140,13 +211,15 @@ def _placeholder(url, title_hint, why):
             "note": why or "抓取失败"}
 
 
-def article_from_url(url, use_chrome=True, title_hint=None, timeout=60):
+def article_from_url(url, use_chrome=True, title_hint=None, timeout=60,
+                     should_stop=None):
     """抓一个 URL 并抽正文。
 
     返回 (art, why)。成功时 why="",art["note"] 里可能带「内容偏短」提示;
     失败时 art=None,why 是可以直接显示给用户看的原因。
     """
-    html, via, err = fetch_html(url, use_chrome=use_chrome, timeout=timeout)
+    html, via, err = fetch_html(url, use_chrome=use_chrome, timeout=timeout,
+                                should_stop=should_stop)
     if not html:
         return None, (err or "抓取失败")
     art = extract_page.extract_article(html, url, title_hint=title_hint)
@@ -169,25 +242,74 @@ def article_from_url(url, use_chrome=True, title_hint=None, timeout=60):
 
 
 # ------------------------------------------------------------ 多个网址 ------
-def import_urls(ctx, cid, urls, use_chrome=True, timeout=60):
-    urls = [u.strip() for u in urls if u and u.strip()]
+def import_urls(ctx, cid, urls, use_chrome=True, timeout=60, workers=3):
+    """导入一批网址。
+
+    ⚠️ **并发**。原先是一个一个串行抓,每个链接光"等页面稳定"就 2 秒起,
+    再加加载和取整页 HTML —— 20 个链接要两三分钟,而且期间界面只有一个
+    缓慢跳动的计数,用户会觉得卡死了(「如果卡壳了我就没有任何办法」)。
+    现在同时开 3 个标签页抓,进度按**完成数**报,取消也在每一轮轮询里检查。
+    """
+    # ⚠️ 必须走 normalize_urls —— 用户粘进来的常常是 [标题](网址) 这种
+    #    Markdown 链接,直接当网址用会全部「抓取失败」
+    urls = normalize_urls(urls)
+    if not urls:
+        ctx.log("没解析出任何网址 —— 检查一下粘贴的内容里有没有 http(s):// 开头的链接")
+        return {"added": 0, "failed": [], "total": 0}
     ctx.set_total(len(urls))
-    ctx.log(f"开始导入 {len(urls)} 个网址(Chrome 渲染:{'开' if use_chrome else '关'})")
+    nw = max(1, min(int(workers or 3), 6))
+    ctx.log(f"开始导入 {len(urls)} 个网址"
+            f"(Chrome 渲染:{'开' if use_chrome else '关'},同时 {nw} 个)")
+
+    # 先把浏览器和扩展准备好,别让 3 个线程同时去启动它
+    if use_chrome:
+        try:
+            ok, err = capture.ensure()
+            if not ok:
+                ctx.log(f"浏览器没起来({err}),会退回普通 HTTP 抓取")
+        except Exception as e:
+            ctx.log(f"浏览器准备失败({e}),会退回普通 HTTP 抓取")
+
+    results, lock = {}, threading.Lock()
+
+    def one(i, u):
+        if ctx.should_stop():
+            with lock:
+                results[i] = (u, None, "已取消")
+            return
+        try:
+            art, why = article_from_url(u, use_chrome=use_chrome,
+                                        timeout=timeout,
+                                        should_stop=ctx.should_stop)
+        except capture.Cancelled:
+            with lock:
+                results[i] = (u, None, "已取消")
+            return
+        with lock:
+            results[i] = (u, art, why)
+            n = len(results)
+            ctx.progress(n, len(urls), f"[{n}/{len(urls)}] {u[:72]}")
+            if art:
+                ctx.log(f"✓ {art['title'][:60]} "
+                        f"({art['text_len']} 字,{art['via']})")
+            else:
+                ctx.log(f"✗ {u[:70]} —— {why}")
+
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=nw) as ex:
+        list(ex.map(lambda p: one(*p), list(enumerate(urls))))
+
+    # 按**原始顺序**组装,和用户粘进来的次序一致
     items, failed = [], []
     for i, u in enumerate(urls):
-        if ctx.should_stop():
-            break
-        ctx.progress(i, len(urls), f"[{i+1}/{len(urls)}] {u[:80]}")
-        art, why = article_from_url(u, use_chrome=use_chrome, timeout=timeout)
+        _u, art, why = results.get(i, (u, None, "未处理"))
         if art:
             items.append({"title": art["title"], "parsed_html": art["content"],
                           "html": None, "url": u, "mode": art["mode"],
                           "note": art.get("note") or ""})
-            ctx.log(f"✓ {art['title'][:60]} ({art['text_len']} 字,{art['via']})")
         else:
             items.append(_placeholder(u, None, why))
             failed.append({"url": u, "why": why})
-            ctx.log(f"✗ {u[:70]} —— {why}")
     ids = store.add_articles_bulk(cid, items, source="urls")
     return {"added": len(ids), "failed": failed, "total": len(urls)}
 
@@ -205,28 +327,73 @@ def website_links(url, use_chrome=True, same_domain=True, mode="links",
     return extract_page.page_links(html, url, same_domain=same_domain)
 
 
-def import_links(ctx, cid, links, use_chrome=True, timeout=60):
-    """links: [{href,title}]"""
+def import_links(ctx, cid, links, use_chrome=True, timeout=60, workers=3):
+    """links: [{href,title}]
+
+    ⚠️ **这里原来是一个一个串行抓的**,而用户报的「很多链接的时候特别慢」
+    走的正是这条路(站点内链接 / sitemap 动辄几十上百条)。
+    更糟的是它调 article_from_url 时**没传 should_stop** —— 单个卡住的页面
+    能把这一批拖满整个 timeout,而「取消」要等当前这个跑完才生效
+    (用户原话:「如果卡壳了我就没有任何办法」)。
+    现在和 import_urls 一样:并行 + 每一轮轮询都能取消。
+    """
     links = [l for l in (links or []) if l.get("href")]
+    if not links:
+        ctx.log("没有可导入的链接")
+        return {"added": 0, "failed": [], "total": 0}
     ctx.set_total(len(links))
-    ctx.log(f"开始导入 {len(links)} 个页面链接")
+    nw = max(1, min(int(workers or 3), 6))
+    ctx.log(f"开始导入 {len(links)} 个页面链接(同时 {nw} 个)")
+
+    if use_chrome:
+        try:
+            ok, err = capture.ensure()
+            if not ok:
+                ctx.log(f"浏览器没起来({err}),会退回普通 HTTP 抓取")
+        except Exception as e:
+            ctx.log(f"浏览器准备失败({e}),会退回普通 HTTP 抓取")
+
+    results, lock = {}, threading.Lock()
+
+    def one(i, l):
+        u = l["href"]
+        if ctx.should_stop():
+            with lock:
+                results[i] = (l, None, "已取消")
+            return
+        try:
+            art, why = article_from_url(u, use_chrome=use_chrome,
+                                        title_hint=l.get("title"),
+                                        timeout=timeout,
+                                        should_stop=ctx.should_stop)
+        except capture.Cancelled:
+            with lock:
+                results[i] = (l, None, "已取消")
+            return
+        with lock:
+            results[i] = (l, art, why)
+            n = len(results)
+            ctx.progress(n, len(links), f"[{n}/{len(links)}] {u[:80]}")
+            if art:
+                ctx.log(f"✓ {art['title'][:60]}")
+            else:
+                ctx.log(f"✗ {u[:70]} —— {why}")
+
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=nw) as ex:
+        list(ex.map(lambda p: one(*p), list(enumerate(links))))
+
     items, failed = [], []
     for i, l in enumerate(links):
-        if ctx.should_stop():
-            break
+        _l, art, why = results.get(i, (l, None, "未处理"))
         u = l["href"]
-        ctx.progress(i, len(links), f"[{i+1}/{len(links)}] {u[:80]}")
-        art, why = article_from_url(u, use_chrome=use_chrome,
-                                    title_hint=l.get("title"), timeout=timeout)
         if art:
             items.append({"title": art["title"], "parsed_html": art["content"],
                           "html": None, "url": u, "mode": art["mode"],
                           "note": art.get("note") or ""})
-            ctx.log(f"✓ {art['title'][:60]}")
         else:
             items.append(_placeholder(u, l.get("title"), why))
             failed.append({"url": u, "why": why})
-            ctx.log(f"✗ {u[:70]} —— {why}")
     ids = store.add_articles_bulk(cid, items, source="website")
     return {"added": len(ids), "failed": failed, "total": len(links)}
 

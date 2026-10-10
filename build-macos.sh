@@ -21,7 +21,11 @@ DIST="$BUILD/dist"
 #    app 包里没有这个模块,启动直接 ModuleNotFoundError、界面打不开,
 #    而**构建过程从头到尾全绿、没有任何一步报错**。
 #    现在直接从源码目录取全部顶层 .py,再加 ui/ —— 以后加新模块自动带上。
-FILES=($(cd "$SRC" && ls *.py 2>/dev/null | sort) ui)
+# ⚠️ 但要**排掉验证脚本**(verify-*.py)和临时探针(_*.py):它们是开发期的东西,
+#    进 app 包没有意义。判据用**文件名前缀**,不逐个列 —— 将来加新验证脚本
+#    不用回来改这里(和上面那条是同一个道理)。
+# ⚠️ 不能用 mapfile —— 本机 /bin/bash 是 **3.2**,没有这个内建。
+FILES=($(cd "$SRC" && ls *.py 2>/dev/null | grep -v '^verify-' | grep -v '^_' | sort) ui)
 
 say(){ printf '\n\033[1m== %s ==\033[0m\n' "$1"; }
 
@@ -117,11 +121,15 @@ rm -rf "$STAGE"
 ls -lh "$DIST/$APPNAME-macOS.dmg" | awk '{print "  "$9"  "$5}'
 
 say "6. 同步进 repo 的工作副本"
-for f in "${FILES[@]}"; do
+# ⚠️ 进仓库的清单和进 app 包的**不是同一份**:
+#    · app 包 —— 排掉 verify-*.py / _*.py(开发期的东西,装进包里没意义)
+#    · 仓库   —— **要带上它们**。验证脚本就是回归测试,不带进仓库等于没写
+#      (下次谁都不会知道有这套断言,更不会跑)
+for f in $(cd "$SRC" && ls *.py 2>/dev/null | sort) ui; do
   if [ -d "$SRC/$f" ]; then rsync -a --delete "$SRC/$f/" "$BUILD/$f/"
   else rsync -a "$SRC/$f" "$BUILD/$f"; fi
 done
 rsync -a "$BUILD/docs/" "$BUILD/docs/"   # no-op,保持目录存在
-echo "  已同步(供 git 提交)"
+echo "  已同步(供 git 提交,含验证脚本)"
 
 printf '\n\033[32m完成。\033[0m app: %s\nDMG: %s\n' "$APP" "$DIST/$APPNAME-macOS.dmg"

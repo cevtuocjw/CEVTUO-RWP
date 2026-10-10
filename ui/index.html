@@ -470,9 +470,12 @@ const I18N = {
     "cov.filling":"正在搜索并下载,合集多的时候要等一会…",
     "cov.fillHint":"给还没有封面的合集自动搜图;没搜到的会列出来,可以只重试那些",
     "img.title":"图片下载情况",
-    "img.summary":"这次需要 {want} 张,成功下载 {ok} 张,{bad} 张没获取到。",
+    "img.summary":"书里一共 {want} 张图(来自 {unique} 个地址)。成功嵌入 {ok} 张,{bad} 个地址没获取到。",
+    "img.patchSummary":"这本书原本缺 {want} 张图 —— 这次补上 {ok} 张,还有 {bad} 个地址没拿到。",
+    "img.uses":"出现 {n} 处",
     "img.allOk":"所有图片都下载成功了。",
-    "img.retry":"重新获取没下到的",
+    "img.retry":"把没拿到的补进这本书",
+    "img.retryFail":"补图任务没起来",
     "cov.byLink":"从链接获取","cov.linkPh":"粘贴一个网页或图片的链接",
     "cov.byKey":"或者按关键词搜","cov.fromLink":"获取",
     "cov.plain":"只用书名和作者","cov.linkEmpty":"这个链接里没找到图片",
@@ -573,9 +576,12 @@ const I18N = {
     "cov.filling":"Searching and downloading — this takes a while if you have many collections…",
     "cov.fillHint":"Finds covers for collections that don't have one yet; the failures are listed so you can retry just those",
     "img.title":"Image downloads",
-    "img.summary":"{want} images were needed, {ok} downloaded, {bad} could not be fetched.",
+    "img.summary":"{want} images in the book (from {unique} URLs). {ok} embedded, {bad} URLs could not be fetched.",
+    "img.patchSummary":"This book was missing {want} images — {ok} fetched this time, {bad} URLs still missing.",
+    "img.uses":"{n} places",
     "img.allOk":"Every image downloaded successfully.",
-    "img.retry":"Re-fetch the missing ones",
+    "img.retry":"Fill the missing ones into this book",
+    "img.retryFail":"Could not start the image-fill job",
     "cov.byLink":"From a link","cov.linkPh":"Paste a page or image URL",
     "cov.byKey":"Or search by keyword","cov.fromLink":"Fetch",
     "cov.plain":"Just title and author","cov.linkEmpty":"No images found at that link",
@@ -1115,31 +1121,42 @@ function exportModal(cid){
    有一键去重新再补充获取一次的按钮」。以前是失败静默跳过,书里少几张图
    而用户完全不知道。 */
 function showImageReport(j, cid){
-  const im = ((j && j.result) || {}).images;
-  if(!im) return;                       // 不是导出任务,不掺和
+  const r = (j && j.result) || {};
+  const im = r.images;
+  if(!im) return;                       // 不是导出/补图任务,不掺和
   const failed = im.failed || [];
+  const bookPath = r.path || '';
+  const isPatch = !!r.patched;
   modal({title:t('img.title'), wide:true, okText:null,
-    body:`<p class="muted" style="margin:0 0 12px">${
-        t('img.summary').replace('{want}', im.wanted||0)
-                        .replace('{ok}', im.ok||0)
-                        .replace('{bad}', failed.length)}</p>`
+    body:(r.name? `<p class="muted" style="margin:0 0 4px;word-break:break-all">📖 ${esc(r.name)}</p>`:'')
+      + `<p class="muted" style="margin:0 0 12px">${
+        (isPatch ? t('img.patchSummary') : t('img.summary'))
+          .replace('{want}', im.wanted||0)
+          .replace('{unique}', im.unique||0)
+          .replace('{ok}', im.ok||0)
+          .replace('{bad}', failed.length)}</p>`
       + (failed.length
         ? `<table><tbody>${failed.map(f=>`<tr>
              <td style="font-size:12px;word-break:break-all">${esc(f.url)}</td>
              <td class="muted" style="width:1%;white-space:nowrap">${esc(f.why||'')}</td>
+             <td class="muted" style="width:1%;white-space:nowrap">${(f.uses>1)? t('img.uses').replace('{n}', f.uses) : ''}</td>
            </tr>`).join('')}</tbody></table>`
         : `<div class="empty">${t('img.allOk')}</div>`)});
   const h = $('#modalHost');
   h.querySelector('.ft').innerHTML =
-    (failed.length? `<button class="btn primary" id="imgRetry">${t('img.retry')} (${failed.length})</button>` : '')
+    ((failed.length && bookPath)
+      ? `<button class="btn primary" id="imgRetry">${t('img.retry')} (${failed.length})</button>` : '')
     + `<button class="btn" onclick="closeModal()">${t('common.close')}</button>`;
   const rb = $('#imgRetry');
   if(rb) rb.onclick = async ()=>{
     closeModal();
-    // 重新导出这一本。图片下载现在会换 Referer / UA 退着试三轮,
-    // 上次因为防盗链失败的这一轮多半能下来。
-    const jr = await post('/api/export',{collectionId:cid, embedImages:true,
-                                        removePreface:false});
+    // ⚠️ 补**原来那本**,不是重新做一本。
+    //    以前这里走的是 /api/export —— 结果书库里凭空多出一本,
+    //    而用户要的是「在现在的基础上把没获取到的补进来」。
+    let jr=null, err='';
+    try{ jr = await post('/api/book/fillImages',{path:bookPath}); }
+    catch(x){ err = x.message||String(x); }
+    if(!jr || !jr.job){ toast(err || t('img.retryFail')); return; }
     openJob(jr.job, j2=>showImageReport(j2, cid));
   };
 }

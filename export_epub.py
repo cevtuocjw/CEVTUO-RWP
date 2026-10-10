@@ -33,6 +33,8 @@ td, th { border:1px solid #ddd; padding:.35em .6em; }
 .titlepage h1 { font-size:2.2em; }
 .titlepage p { color:#666; }
 p.meta { font-size:.8em; color:#666; margin:.2em 0 1em; }
+/* 没下到的图留下的占位标记:阅读器里什么都不显示,但"再补一次"找得到它 */
+span.cevtuo-miss { display:none; }
 nav.topbar { font-size:.84em; padding:.5em .75em; margin:0 0 1.1em;
   border:1px solid #e4e4e4; border-radius:8px; background:#fafafa; }
 nav.topbar a.nb { color:#2a6bb0; text-decoration:none; }
@@ -128,6 +130,23 @@ def _fetch_image(url, timeout=15):
 EXT_MT = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
           ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml"}
 _IMG_SRC = re.compile(r'<img[^>]+src\s*=\s*"([^"]+)"', re.I)
+# 下不到的图留下的占位标记的属性名。补图时按它找。
+MISS_ATTR = "data-cevtuo-miss"
+# ⚠️ 必须**两种收尾都认**。空元素经 lxml 序列化出来是**自闭合**的
+#    `<span …/>`,而不是 `<span …></span>` —— 我第一版只写了对标签,
+#    结果占位标记明明在文件里、正则一个都匹配不上,补图永远是「缺 0 张」。
+_MISS_TAIL = r'(?:/>|>\s*</span>)'
+
+
+def _miss_pat(url=None):
+    if url is None:
+        return re.compile(r'<span[^>]*\b' + MISS_ATTR + r'\s*=\s*"([^"]+)"[^>]*?'
+                          + _MISS_TAIL, re.I)
+    return re.compile(r'<span[^>]*\b' + MISS_ATTR + r'\s*=\s*"'
+                      + re.escape(url) + r'"[^>]*?' + _MISS_TAIL, re.I)
+
+
+_MISS_TAG = _miss_pat()
 
 
 class ImageEmbedder:
@@ -140,22 +159,36 @@ class ImageEmbedder:
         self.map = {}
         self.blobs = []
         self.failed = []          # [{url, why}] —— 要给用户看的"没下到"名单
+        self.uses = {}            # url -> 在书里出现几次(见 report())
         self._lk = threading.Lock()
 
     def report(self):
-        """这次一共要下几张、下到几张、哪几张没下到。"""
-        want = len(self.map)
-        got = len(self.blobs)
-        return {"wanted": want, "ok": got,
-                "failed": sorted(self.failed, key=lambda x: x["url"])}
+        """这次的账。
+
+        ⚠️ 「书里有多少张图」和「要下几个网址」**是两件事**,必须分开报。
+        以前只报去重后的网址数 —— 同一张图出现在两篇文章里时,
+        书里明明是 3 个 <img>,报告却写「需要 2 张」。
+        读者数的是书上看得见的图,不是 URL 个数。
+        """
+        return {
+            "wanted": sum(self.uses.values()),   # 书里一共出现多少个 <img>
+            "unique": len(self.uses),            # 不同的地址几个(实际下载次数)
+            "ok": len(self.blobs),               # 下到了几个不同的图
+            "failed": [{"url": u, "why": w, "uses": self.uses.get(u, 1)}
+                       for u, w in sorted(self.failed,
+                                          key=lambda x: x["url"])],
+        }
 
     def collect(self, htmls):
-        """先把所有要下的图片 URL 收集去重(最多 limit 张)。"""
+        """收集所有要下的图片 URL(去重),同时记下**每个地址在书里出现几次**。"""
         urls, seen = [], set()
         for h in htmls:
             for m in _IMG_SRC.finditer(h or ""):
                 u = m.group(1)
-                if not u or u.startswith(("data:", "images/")) or u in seen:
+                if not u or u.startswith(("data:", "images/")):
+                    continue
+                self.uses[u] = self.uses.get(u, 0) + 1
+                if u in seen:
                     continue
                 seen.add(u)
                 urls.append(u)
@@ -225,13 +258,149 @@ class ImageEmbedder:
                           "loading"):
                     img.attrib.pop(a, None)
             elif src and not src.startswith(("data:", "images/")):
-                # 下载失败的图:去掉,免得 Kindle 上留一堆破图
-                img.getparent().remove(img)
+                # ⚠️ 下不到的图**不删掉**,改成留一个占位标记。
+                #    删掉的话"再补一次"就无从下手 —— 根本不知道这里原本有张图、
+                #    原图是哪个网址。占位标记带着原始 URL,补图时按它去重下。
+                #    它在阅读器里不占位、不显示(样式里 display:none)。
+                span = etree.Element("span")
+                span.set("class", "cevtuo-miss")
+                span.set(MISS_ATTR, src)
+                img.getparent().replace(img, span)
         try:
             return "".join(etree.tostring(c, encoding="unicode", method="html")
                            for c in doc)
         except Exception:
             return html
+
+
+def patch_missing_images(epub_path, on_progress=None):
+    """把这本书里**没下到的图**再抓一次,**补进原来那本**。
+
+    用户原话:「我是让在现在的基础上,把没获取到的图片再获取一下,然后插入」——
+    在这之前做成了「重新导出一遍」,于是书库里凭空多出一本,原来那本还是缺的。
+
+    ⚠️ 能这么补的前提是导出时**没把失败的 img 删掉**,而是留了一个带原始 URL 的
+    占位标记(`<span data-cevtuo-miss="…">`)。删了的话这里根本不知道哪缺图、缺的是哪个网址。
+
+    直接操作 zip,不走 ebooklib 读改写 —— 它 round-trip 一次会重排 OPF/spine,
+    容易把好好的书改坏。
+    """
+    import shutil
+    import zipfile
+
+    epub_path = Path(epub_path)
+    if not epub_path.exists():
+        raise RuntimeError("book-not-found:这本书已经不在了(可能被删掉或挪走了)")
+
+    with zipfile.ZipFile(epub_path) as z:
+        order = [i.filename for i in z.infolist()]
+        blobs = {n: z.read(n) for n in order}
+
+    # ① 找出所有"这里原本有张图但没下到"的占位
+    targets = []
+    for n in order:
+        if not n.lower().endswith((".xhtml", ".html", ".htm")):
+            continue
+        try:
+            s = blobs[n].decode("utf-8")
+        except Exception:
+            continue
+        for m in _MISS_TAG.finditer(s):
+            targets.append((n, m.group(1)))
+    if not targets:
+        return {"ok": True, "missing": 0, "unique": 0, "fixed": 0, "still": [],
+                "path": str(readable(epub_path)), "note": "这本书里没有缺图"}
+    from collections import Counter
+    uses = Counter(u for _zf, u in targets)
+    if on_progress:
+        on_progress(0, len(targets), f"发现 {len(targets)} 张缺图,准备重下")
+
+    # ② 接着现有编号往下编,避免覆盖已有的 imgN
+    next_id = 1
+    for n in order:
+        m = re.match(r"img(\d+)\.[a-z0-9]+$", n.rsplit("/", 1)[-1], re.I)
+        if m:
+            next_id = max(next_id, int(m.group(1)) + 1)
+
+    # ⚠️ 两个路径**不是一回事**,混用会让图写不进包里:
+    #    · href  —— 相对 OPF 的路径,给 manifest 和 <img src> 用(`images/img9.png`)
+    #    · zippath —— zip 里的实际条目名(`EPUB/images/img9.png`)
+    #    第一版把 href 直接当 zippath 写,结果章节指向 images/img9.png、
+    #    包里却没有这一项 —— 书打开了、图是空的,而且 zip 完整性检查还是通过的。
+    opf_name = next((n for n in order if n.lower().endswith(".opf")), "")
+    opf_root = opf_name.rsplit("/", 1)[0] + "/" if "/" in opf_name else ""
+
+    # ③ 重下
+    fixed, still, new_files, repl = 0, [], {}, {}
+    for i, (zf, url) in enumerate(targets):
+        if on_progress:
+            on_progress(i, len(targets), f"重下图片 {i + 1}/{len(targets)}")
+        content, ctype, why = _fetch_image(url)
+        if not content:
+            still.append({"url": url, "why": why, "uses": uses.get(url, 1)})
+            continue
+        ext = os.path.splitext(urlparse(url).path)[1].lower()
+        if ext not in EXT_MT:
+            ext = {".png": ".png", ".gif": ".gif", ".webp": ".webp",
+                   ".svg": ".svg"}.get((ctype or "").split(";")[0].strip(), ".jpg")
+        uid = f"img{next_id}"
+        next_id += 1
+        fn = f"images/{uid}{ext}"
+        new_files[fn] = (content, EXT_MT.get(ext, "image/jpeg"), uid,
+                         opf_root + fn)
+        repl.setdefault(zf, []).append((url, fn))
+        fixed += 1
+
+    if not new_files:
+        return {"ok": True, "missing": len(targets), "unique": len(uses),
+                "fixed": 0, "still": still, "path": str(readable(epub_path))}
+
+    # ④ 把占位换回真正的 <img>
+    for zf, pairs in repl.items():
+        s = blobs[zf].decode("utf-8")
+        for url, fn in pairs:
+            s = _miss_pat(url).sub('<img src="%s" alt=""/>' % fn, s)
+        blobs[zf] = s.encode("utf-8")
+
+    # ⑤ 在 OPF 的 manifest 里登记新图 —— 不登记的话严格一点的阅读器不认
+    opf = next((n for n in order if n.lower().endswith(".opf")), None)
+    if opf:
+        try:
+            s = blobs[opf].decode("utf-8")
+            add = "".join(
+                '<item id="%s" href="%s" media-type="%s"/>' % (uid, fn, mt)
+                for fn, (_c, mt, uid, _z) in new_files.items())
+            if "</manifest>" in s:
+                blobs[opf] = s.replace("</manifest>", add + "</manifest>",
+                                       1).encode("utf-8")
+        except Exception as e:
+            log.warning("OPF manifest 登记失败(图还是会加进去): %s", e)
+
+    # ⑥ 写回。⚠️ zip 里 mimetype 必须是**第一项且不压缩**,否则不是合法 EPUB。
+    tmp = epub_path.with_name(epub_path.name + ".tmp")
+    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
+        if "mimetype" in blobs:
+            zi = zipfile.ZipInfo("mimetype")
+            zi.compress_type = zipfile.ZIP_STORED
+            z.writestr(zi, blobs["mimetype"])
+        for n in order:
+            if n == "mimetype":
+                continue
+            z.writestr(n, blobs[n])
+        for _fn, (c, _mt, _uid, zippath) in new_files.items():
+            z.writestr(zippath, c)
+    shutil.move(str(tmp), str(epub_path))
+    return {"ok": True, "missing": len(targets), "unique": len(uses),
+            "fixed": fixed, "still": still,
+            "path": str(readable(epub_path))}
+
+
+def readable(p):
+    """把路径里的用户名换成 ~,只为了让界面上的提示短一点。"""
+    try:
+        return "~/" + str(Path(p).relative_to(Path.home()))
+    except Exception:
+        return str(p)
 
 
 def build(collection, articles, out_path, opts=None, on_progress=None):

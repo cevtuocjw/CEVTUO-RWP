@@ -50,7 +50,7 @@ PORT = 8611
 # ⚠️ 以前设置页那行「版本」显示的是 capture.status()["version"],那是 **Chrome 的版本**,
 # 不是本软件的。label 写的确实是「浏览器版本」,但用户看到的就一个版本号,
 # 会当成软件版本 —— 加这一行区分开。
-APP_VERSION = "1.3"
+APP_VERSION = "1.4"
 
 # ⚠️ 这个名字不能叫 log —— 下面几行就有一个 def log(*a)。
 # 叫 log 的话会被那个函数覆盖,而 AttributeError 出现在两个很难查的地方:
@@ -340,11 +340,36 @@ def do_export(ctx, cid, opts):
             "size": out.stat().st_size,
             # 图片账单:界面要显示「下了多少张 / 哪些没下到」,并给重试按钮
             "images": {"wanted": rep.get("wanted", 0), "ok": rep.get("ok", 0),
+                       "unique": rep.get("unique", 0),
                        "failed": rep.get("failed", [])},
             "collectionId": cid}
 
 
 # ------------------------------------------------------------ RSS 生成 -------
+def fill_book_images_job(ctx, path):
+    """给**指定的那一本**补缺图 —— 不重新做书。
+
+    用户原话:「我是让在现在的基础上,把没获取到的图片再获取一下,然后插入」。
+    早先那个「重新获取」按钮走的是重新导出,结果是书库里又多一本,
+    而原来那本还是缺图 —— 用户要的是**把原来那本补全**。
+    """
+    path = Path(path)
+
+    def prog(done, total, msg=None):
+        ctx.progress(done, total, msg)
+
+    r = export_epub.patch_missing_images(path, on_progress=prog)
+    ctx.log(f"这本书共缺 {r['missing']} 张图,补上 {r['fixed']} 张,"
+            f"还剩 {len(r['still'])} 张没拿到")
+    for x in r["still"][:20]:
+        ctx.log(f"  ✗ {x['url'][:90]} —— {x['why']}")
+    # ⚠️ 回的形状和「导出结果」保持一致,前端一套代码就能渲染
+    return {"path": str(path), "name": path.name, "patched": True,
+            "images": {"wanted": r["missing"], "ok": r["fixed"],
+                       "unique": r.get("unique", 0),
+                       "failed": r["still"]}}
+
+
 def rss_generate_job(ctx, payload):
     # 用 sys.executable —— 打包形态下是自带的 Python,开发形态下是 .venv 的
     args = [sys.executable, str(CODE / "rss2epub.py"),
@@ -865,6 +890,23 @@ class Handler(BaseHTTPRequestHandler):
                                  mode=art["mode"], note=art.get("note") or "")
             return {"ok": True, "article": store.get_article(a["id"]),
                     "chars": art["text_len"], "via": art["via"]}
+
+        # 给**指定那一本**补缺图(不重新做书)
+        if r == "/api/book/fillImages":
+            raw = (b.get("path") or "").strip()
+            if not raw:
+                return {"ok": False, "err": "缺少书籍路径"}
+            try:
+                p = Path(raw).expanduser().resolve()
+            except Exception as e:
+                return {"ok": False, "err": f"路径无效: {e}"}
+            roots = [store.books_dir().resolve(), store.output_dir().resolve()]
+            if not any(p == rt or rt in p.parents for rt in roots):
+                return {"ok": False, "err": "只能补书库目录里的书"}
+            if not p.is_file():
+                return {"ok": False, "err": "这本书已经不在了(可能被删掉或挪走了)"}
+            return {"job": jobs.start("images", f"给 {p.name} 补图",
+                                      lambda ctx: fill_book_images_job(ctx, str(p)))["id"]}
 
         # 删一本书(书库右键)。同时把本地文件删掉。
         if r == "/api/book/delete":
