@@ -445,6 +445,17 @@ class Cancelled(Exception):
     """
 
 
+class Skipped(Exception):
+    """用户点了「跳过这一章」。
+
+    ⚠️ 和 `Cancelled` 是**两件事**,绝不能混:
+      · `Cancelled` —— 整批不要了,一路抛到最外层结束任务;
+      · `Skipped`   —— **只丢这一条**,后面的继续跑。
+    用户原话:「如果遇到卡壳的我可以中途跳过,确保我可以一定做完,而不是只能取消」。
+    只有"取消"的话,一个卡住的页面会逼他放弃整批 —— 这正是他抱怨的。
+    """
+
+
 def _looks_interstitial(text):
     """这段可见文字像不像「拦截中间页」？
 
@@ -727,9 +738,19 @@ class Tab:
             if msg.get("id") == mid:
                 return msg
 
-    def evaluate(self, expr, timeout=None):
-        r = self.cmd("Runtime.evaluate",
-                     {"expression": expr, "returnByValue": True}, timeout)
+    def evaluate(self, expr, timeout=None, await_promise=False):
+        """在页面里求值。
+
+        ⚠️ `await_promise=True` 是给 `(async () => {…})()` 用的。
+        不传它的话,拿回来的是**一个 Promise 对象**,`returnByValue` 序列化不了,
+        于是 `value` 是 None —— 调用方看到的是"没测到",而真实原因是
+        "表达式根本没被等"。这个坑我踩过两次(两次都先去怀疑被测的东西),
+        所以把开关做进这个方法,而不是在调用方各写各的。
+        """
+        p = {"expression": expr, "returnByValue": True}
+        if await_promise:
+            p["awaitPromise"] = True
+        r = self.cmd("Runtime.evaluate", p, timeout)
         return (((r or {}).get("result") or {}).get("result") or {}).get("value")
 
     def set_cookies(self, cookies):
@@ -746,7 +767,7 @@ class Tab:
         return ok
 
     def goto(self, url, wait_text=350, settle=1.2, max_wait=None,
-             should_stop=None, challenge_wait=30.0):
+             should_stop=None, challenge_wait=30.0, should_skip=None):
         """打开页面并等正文稳定。返回渲染后的 outerHTML。
 
         `should_stop` 是个回调,每轮轮询都会问一次 —— 用户点了「取消」
@@ -770,6 +791,9 @@ class Tab:
                 break
             if should_stop and should_stop():
                 raise Cancelled("已取消")
+            # ⚠️ 跳过放在取消**后面**:真的整批取消了就以取消为准。
+            if should_skip and should_skip():
+                raise Skipped("已跳过")
             ready = False
             text = ""
             try:
@@ -838,8 +862,13 @@ class Tab:
 
 # --------------------------------------------------------------- 对外接口 ----
 def render(url, port=DEFAULT_PORT, timeout=60, wait_text=350, settle=1.2,
-           cookies=None, should_stop=None):
-    """用真实 Chrome 渲染 url,返回 (html, err)。"""
+           cookies=None, should_stop=None, should_skip=None):
+    """用真实 Chrome 渲染 url,返回 (html, err)。
+
+    ⚠️ `Cancelled` / `Skipped` **必须原样抛出去**,不能被下面那句
+    `except Exception` 变成一条"浏览器渲染失败" —— 那样取消和跳过都会
+    被降级成"这个站抓失败了",然后掉进直连那条**没有中断机制**的路。
+    """
     ok, err = ensure(port)
     if not ok:
         return "", err
@@ -849,8 +878,11 @@ def render(url, port=DEFAULT_PORT, timeout=60, wait_text=350, settle=1.2,
         if cookies:
             tab.set_cookies(cookies)
         html = tab.goto(url, wait_text=wait_text, settle=settle,
-                        max_wait=timeout, should_stop=should_stop) or ""
+                        max_wait=timeout, should_stop=should_stop,
+                        should_skip=should_skip) or ""
         return html, ("" if html else "页面未返回内容")
+    except (Cancelled, Skipped):
+        raise
     except Exception as e:
         return "", f"浏览器渲染失败: {e}"
     finally:

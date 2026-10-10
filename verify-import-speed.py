@@ -25,6 +25,7 @@ import time
 
 import capture
 import imports
+import jobs
 
 DELAY = 2.0
 
@@ -63,10 +64,22 @@ class Server(socketserver.ThreadingTCPServer):
     daemon_threads = True
 
 
-class Ctx:
-    """最小的 ctx 桩 —— 只实现导入流程真正用到的那几个方法。"""
+class Ctx(jobs.Ctx):
+    """导入流程的 ctx 桩。
+
+    ⚠️⚠️ **必须继承真正的 `jobs.Ctx`**,不能自己从零写一个"最小实现"。
+    第一版就是手写的,后来 jobs.Ctx 为了「跳过这一章」加了
+    `begin_item` / `end_item` / `should_skip`,这个桩没跟上 ⇒ 一跑就
+    `AttributeError: 'Ctx' object has no attribute 'begin_item'`。
+
+    崩掉还不是最坏的情况 —— 最坏的是**桩里恰好有个同名但行为不同的方法**,
+    那就变成"测的是一个假的东西",而且全绿。
+    继承之后,真 Ctx 加任何方法,这里自动就有,永远不会漂。
+    """
 
     def __init__(self, cancel_at=None):
+        # 假 job,只为让 jobs.Ctx.__init__ 能跑起来
+        super().__init__({"id": "stub", "log": [], "cancel": False})
         self.lines = []
         self.t0 = time.time()
         self.cancel_at = cancel_at

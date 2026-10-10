@@ -68,6 +68,36 @@ html[data-theme="dark"]  .aurora i{opacity:.42}
 .aurora .d{width:16vw;height:16vw;left:52%;top:26%;background:#ffffff;opacity:.18;animation:drift1 29s var(--ease) infinite alternate-reverse}
 html[data-theme="light"] .aurora{filter:blur(95px)}
 html[data-theme="light"] .aurora i{opacity:.34}
+
+/* ---- 自定义背景(用户自己设的) ------------------------------------------
+   ⚠️⚠️ 「全铺满但不拉伸」的关键就在 `background-size: cover` 这一行。
+       · `100% 100%` ⇒ 把图**拉长压扁**,宽高比丢了(就是用户说的「拉伸」);
+       · `cover`     ⇒ 保持比例铺满视口,**把溢出去的部分裁掉**。
+       · `contain`   ⇒ 保比例但**留黑边**,不叫"铺满"。
+   三种都不改文件本身 —— 存图时也是等比缩放,不动宽高比,前后一致。
+
+   层叠用负 z-index:`::before`(-2)盖住 body 底色、`::after`(-1)是那层薄纱,
+   内容(>=0)都在它们之上。 */
+body::before{
+  content:''; position:fixed; inset:0; z-index:-2; pointer-events:none;
+  background-image:var(--bgimg,none);
+  background-size:cover;
+  background-position:center center;
+  background-repeat:no-repeat;
+}
+/* 压一层很淡的纱。目的只有一个:让玻璃面板上的字**在任何图上都读得出来**。
+   调厚了就把用户的图挡住了,所以只做到"够读"为止,不追求绝对对比。 */
+body::after{
+  content:''; position:fixed; inset:0; z-index:-1; pointer-events:none;
+  background:var(--bgscrim,transparent);
+}
+html[data-theme="light"]{--bgscrim:rgba(248,250,253,.42)}
+html[data-theme="dark"] {--bgscrim:rgba(6,10,16,.52)}
+/* 设了自定义背景就把自带光效收掉 —— 留着的话它和背景图互相打架,
+   看起来像"背景雾了"。 */
+body.has-bg .aurora{display:none}
+/* 设了自定义背景时兜底用深色:图万一没加载出来,总是深色比随主题跳变稳。 */
+body.has-bg{background:#060a10}
 @keyframes drift1{to{transform:translate3d(9vw,7vh,0) scale(1.14)}}
 @keyframes drift2{to{transform:translate3d(-11vw,9vh,0) scale(1.09)}}
 @keyframes drift3{to{transform:translate3d(7vw,-9vh,0) scale(1.16)}}
@@ -538,6 +568,15 @@ const I18N = {
     "set.library":"书库位置","set.libraryNote":"所有生成的书(RSS 日报与合集导出)都放在这里。改位置时,已生成的书会自动一起搬过去。",
     "set.pick":"选择文件夹","set.currentFmt":"当前","set.pathManual":"也可以直接输入路径",
     "set.moved":"已移动 {n} 项","set.appearance":"外观","set.theme":"主题",
+    "set.bg":"背景图",
+    "set.bgNote":"给它一个链接,它自己去把图取回来。背景会铺满整屏:永远保持原比例、裁掉多余的边,绝不会把图拉变形。",
+    "set.bgPh":"图片直链,或含图网页的网址",
+    "set.bgUse":"用这个链接","set.bgPick":"选本机图片","set.bgReset":"恢复默认背景",
+    "set.bgCur":"当前:{w}×{h},{kb} KB","set.bgNone":"当前:默认背景",
+    "set.bgPick2":"选一张用这个",
+    "set.bgOk":"背景已换好","set.bgBad":"换背景失败",
+    "set.bgSampled":"这些图太小了,当背景会糊;下面列出的都是够大的。",
+    "set.bgPrev":"预览 —— 它铺满时就是这个样子","set.bgResetOk":"已恢复默认背景",
     "set.light":"浅色","set.dark":"深色","set.auto":"跟随系统","set.lang":"语言",
     "set.glass":"玻璃质感","set.glassNote":"拖动调节毛玻璃的强度",
     "set.about":"关于","set.app":"应用","set.limit":"导出上限",
@@ -545,6 +584,8 @@ const I18N = {
     "set.dataDir":"数据与日志",
     "job.title":"任务进度","job.running":"进行中","job.done":"✓ 完成","job.error":"✗ 出错",
     "job.cancelled":"已取消","job.queued":"排队中","job.cancel":"取消","job.cancelledReq":"已请求取消",
+    "job.skip":"跳过这一章","job.skippedReq":"已跳过最慢的那一条,后面的继续",
+    "job.skipNothing":"现在没有在抓的条目,跳不了",
     "job.made":"生成完成:","job.nothing":"这次没有新内容",
     "msg.pasted":"每行一个链接,已识别 {n} 条",
     "footer.ready":"就绪","footer.chrome":"Chrome 渲染就绪",
@@ -644,6 +685,15 @@ const I18N = {
     "set.library":"Library location","set.libraryNote":"All generated books (RSS dailies and collection exports) live here. Changing it moves existing books along.",
     "set.pick":"Choose folder","set.currentFmt":"Current","set.pathManual":"Or type a path",
     "set.moved":"Moved {n} item(s)","set.appearance":"Appearance","set.theme":"Theme",
+    "set.bg":"Background image",
+    "set.bgNote":"Give it a link and it fetches the image itself. The background always fills the screen — original aspect ratio kept, overflow cropped, never stretched.",
+    "set.bgPh":"Direct image URL, or a page containing images",
+    "set.bgUse":"Use this link","set.bgPick":"Pick a local image","set.bgReset":"Reset to default",
+    "set.bgCur":"Current: {w}×{h}, {kb} KB","set.bgNone":"Current: default background",
+    "set.bgPick2":"Use this one",
+    "set.bgOk":"Background updated","set.bgBad":"Could not set background",
+    "set.bgSampled":"These are too small to use as a background; only large enough images are listed.",
+    "set.bgPrev":"Preview — this is exactly how it will fill","set.bgResetOk":"Default background restored",
     "set.light":"Light","set.dark":"Dark","set.auto":"System","set.lang":"Language",
     "set.glass":"Glass intensity","set.glassNote":"Drag to adjust the frosted-glass strength",
     "set.about":"About","set.app":"App","set.limit":"Export limit",
@@ -651,6 +701,8 @@ const I18N = {
     "set.dataDir":"Data & logs",
     "job.title":"Task progress","job.running":"Running","job.done":"✓ Done","job.error":"✗ Failed",
     "job.cancelled":"Cancelled","job.queued":"Queued","job.cancel":"Cancel","job.cancelledReq":"Cancel requested",
+    "job.skip":"Skip this chapter","job.skippedReq":"Skipped the slowest one, continuing",
+    "job.skipNothing":"Nothing in flight to skip",
     "job.made":"Finished:","job.nothing":"nothing new this time",
     "msg.pasted":"One link per line — {n} detected",
     "footer.ready":"Ready","footer.chrome":"Chrome rendering ready",
@@ -699,12 +751,29 @@ function applyTheme(){
   document.documentElement.dataset.theme = th;
 }
 function applyGlass(v){ document.documentElement.style.setProperty('--glass', String(v)); }
+
+/* 自定义背景开关。
+   ⚠️ `key` 是背景文件的 mtime,**只有当它真的变了才重新设一次 URL**。
+   不这么写会踩一个很烦的坑:`refreshState()` 每 3 秒跑一次,每次都把
+   `--bgimg` 重设成一个带新查询串的 url(...) —— 浏览器就当成新资源,
+   **每 3 秒重新加载一次背景图**,图一直在闪。 */
+let _bgKey = null;
+function applyBg(has, key){
+  const k = has ? String(key == null ? 'x' : key) : '';
+  if(k === _bgKey) return;
+  _bgKey = k;
+  document.body.classList.toggle('has-bg', !!has);
+  document.documentElement.style.setProperty(
+    '--bgimg', has ? `url('/api/bg?m=${encodeURIComponent(key == null ? 'x' : key)}')` : 'none');
+}
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', ()=>{ if(S.ui.theme==='auto') applyTheme(); });
 
 async function refreshState(){
   try{
     const s = await get('/api/state'); S.state = s;
     const ui = s.settings.ui || {};
+    // 背景也跟着 state 走 —— 这样在另一处换了背景,这边会自己跟上。
+    applyBg(!!(s.bg && s.bg.has_bg), s.bg && s.bg.mtime);
     let changed = false;
     if(ui.theme && ui.theme !== S.ui.theme){ S.ui.theme = ui.theme; applyTheme(); }
     if(typeof ui.glass === 'number' && ui.glass !== S.ui.glass){ S.ui.glass = ui.glass; applyGlass(ui.glass); }
@@ -1527,6 +1596,7 @@ async function renderSettings(){
   $('#title').textContent = t('nav.settings');
   const s = await get('/api/state');
   const c = s.capture||{}, P = s.paths||{}, ui = s.settings.ui||{};
+  const bg = s.bg || {};
   $('#view').innerHTML = `
     <div class="card glass">
       <h3>${t('set.appearance')}</h3>
@@ -1552,6 +1622,26 @@ async function renderSettings(){
           <div class="muted" style="margin-top:4px">${t('set.glassNote')}</div>
         </div>
       </div>
+    </div>
+
+    <div class="card glass">
+      <h3>${t('set.bg')}</h3>
+      <p class="muted">${t('set.bgNote')}</p>
+      <div class="row">
+        <input type="text" id="bgUrl" class="grow" placeholder="${t('set.bgPh')}"/>
+        <button class="btn primary" id="bgGo">${t('set.bgUse')}</button>
+      </div>
+      <div class="row" style="margin-top:8px;align-items:center">
+        <input type="file" id="bgFile" accept="image/*" style="display:none"/>
+        <button class="btn" id="bgPick">${t('set.bgPick')}</button>
+        ${bg.has_bg?`<button class="btn danger" id="bgReset">${t('set.bgReset')}</button>`:''}
+        <span class="muted" id="bgInfo">${bg.has_bg
+          ? t('set.bgCur').replace('{w}',bg.width||'?').replace('{h}',bg.height||'?')
+                           .replace('{kb}',Math.round((bg.bytes||0)/1024))
+          : t('set.bgNone')}</span>
+      </div>
+      <div id="bgPrev"></div>
+      <div id="bgRes"></div>
     </div>
 
     <div class="card glass">
@@ -1604,6 +1694,67 @@ async function renderSettings(){
   const sl = $('#glassSlider');
   sl.oninput = ()=>{ const v=+sl.value/100; applyGlass(v); $('#glassVal').textContent = sl.value+'%'; };
   sl.onchange = ()=>post('/api/settings/ui',{glass:+sl.value/100});
+
+  /* ---------- 背景图 ----------
+     ⚠️ 预览框用的是**和真正背景一模一样的规则**(background-size:cover),
+        不是"把图塞进一个框"。两处规则不一样的话,用户看到的预览
+        和他设完之后的样子就不是一回事 —— 那比没有预览更糟。 */
+  function paintBgPrev(){
+    const box = $('#bgPrev'); if(!box) return;
+    box.innerHTML = bg.has_bg
+      ? `<div class="muted" style="margin:12px 0 6px">${t('set.bgPrev')}</div>
+         <div style="width:100%;max-width:520px;aspect-ratio:16/10;
+           border-radius:var(--radius-md);border:1px solid var(--line-soft);
+           background-image:url('/api/bg?m=${bg.mtime||''}');
+           background-size:cover;background-position:center center;
+           background-repeat:no-repeat"></div>`
+      : '';
+  }
+  paintBgPrev();
+
+  async function bgDone(r){
+    if(!r || !r.ok){ toast((r&&r.err)||t('set.bgBad')); return false; }
+    applyBg(true, r.mtime);
+    toast(t('set.bgOk'));
+    renderSettings();          // 重新拉一次 state,把尺寸/大小也刷新出来
+    return true;
+  }
+  $('#bgGo').onclick = async ()=>{
+    const u = $('#bgUrl').value.trim();
+    if(!u){ toast(t('set.bgPh')); return; }
+    const res = $('#bgRes'); res.innerHTML = '<span class="spinner"></span>';
+    let r;
+    try{ r = await post('/api/bg/fromUrl',{url:u}); }
+    catch(e){ res.innerHTML = ''; toast(String(e.message||e)); return; }
+    // 给的是网页 ⇒ 它把够大的图列出来让用户挑(和封面那条路一样)
+    if(r.ok && r.images && r.images.length){
+      res.innerHTML = `<div class="muted" style="margin:10px 0 6px">${t('set.bgSampled')}</div>
+        <div class="covgrid">${r.images.map((x,i)=>`
+          <div class="cov" data-bg="${i}">
+            <img src="${esc(x.thumb||x.url)}" loading="lazy" alt=""/>
+            <span>${esc(x.source||'')}</span>
+            <b>${t('set.bgPick2')}</b></div>`).join('')}</div>`;
+      $$('[data-bg]',res).forEach(el=>el.onclick = async ()=>{
+        await bgDone(await post('/api/bg/fromUrl',{url:r.images[+el.dataset.bg].url}));
+      });
+      return;
+    }
+    res.innerHTML = '';
+    if(r.ok && r.images){ toast(t('set.bgBad')); return; }
+    await bgDone(r);
+  };
+  $('#bgPick').onclick = ()=>$('#bgFile').click();
+  $('#bgFile').onchange = e=>{
+    const f = e.target.files[0]; if(!f) return;
+    const fr = new FileReader();
+    fr.onload = async ()=>{ await bgDone(await post('/api/bg/save',{data_url:fr.result})); };
+    fr.readAsDataURL(f);
+  };
+  const br = $('#bgReset');
+  if(br) br.onclick = async ()=>{
+    await post('/api/bg/reset',{});
+    applyBg(false); toast(t('set.bgResetOk')); renderSettings();
+  };
   $('#libPick').onclick = ()=>folderPicker($('#libPath').value, p=>{ $('#libPath').value = p; });
   $('#libSave').onclick = async ()=>{
     const r = await post('/api/settings/library',{path:$('#libPath').value.trim()});
@@ -1649,35 +1800,57 @@ async function folderPicker(startPath, onPick){
 function openJob(jid,onDone){
   if(!jid) return;
   modal({title:t('job.title'), wide:true,
-    body:`<div class="prog" style="margin-bottom:10px"><i></i></div>
+    body:`<div class="prog" data-job="${jid}" style="margin-bottom:10px"><i></i></div>
       <div class="row" style="margin-bottom:12px">
         <b id="jStat"></b><span class="muted" id="jMsg"></span><span class="grow"></span>
+        <button class="btn sm" id="jSkip">${t('job.skip')}</button>
         <button class="btn sm danger" id="jCancel">${t('job.cancel')}</button></div>
       <div class="logbox" id="jLog"></div>`,
     okText:null});
   $('#modalHost .ft').innerHTML = `<button class="btn" onclick="closeModal()">${t('common.close')}</button>`;
+
   $('#jCancel').onclick = async ()=>{ await post('/api/job/cancel',{id:jid}); toast(t('job.cancelledReq')); };
-  const timer = setInterval(async ()=>{
+  $('#jSkip').onclick = async ()=>{
+    const r = await post('/api/job/skip',{id:jid});
+    toast((r && r.ok) ? t('job.skippedReq') : t('job.skipNothing'));
+  };
+
+  let timer = null; const stop = ()=>{ if(timer) clearInterval(timer); timer=null; };
+  const tick = async ()=>{
     let j; try{ j = await get('/api/job?id='+jid); }catch(e){ return; }
+    if(!j || !j.id){ stop(); return; }
     const host = $('#modalHost');
-    if(!j || !j.id || !host.querySelector('.prog')){ clearInterval(timer); return; }
+    // ⚠️ 用 data-job 认**自己那一个**进度条。直接找 '.prog' 会误伤:
+    //    用户关了再开另一个任务时,新弹窗里也有个 .prog,旧定时器会往上写。
+    const prog = host.querySelector(`.prog[data-job="${jid}"]`);
     const live = (j.status==='running'||j.status==='queued');
-    const pct = j.total? Math.round(j.done/j.total*100) : (live?6:100);
-    host.querySelector('.prog i').style.width = pct+'%';
-    $('#jStat').textContent = ({running:t('job.running'),done:t('job.done'),error:t('job.error'),
-      cancelled:t('job.cancelled'),queued:t('job.queued')})[j.status]||j.status;
-    $('#jMsg').textContent = j.message||'';
-    const lg = $('#jLog'); if(lg){ lg.textContent=(j.log||[]).join('\n'); lg.scrollTop=lg.scrollHeight; }
-    // 结束后:进度条补满、取消按钮消失 —— 之前这里会一直停在半截
-    const cb = $('#jCancel');
-    if(cb) cb.style.display = live? '' : 'none';
+    if(prog){
+      prog.querySelector('i').style.width = (j.total? Math.round(j.done/j.total*100) : (live?6:100))+'%';
+      $('#jStat').textContent = ({running:t('job.running'),done:t('job.done'),error:t('job.error'),
+        cancelled:t('job.cancelled'),queued:t('job.queued')})[j.status]||j.status;
+      $('#jMsg').textContent = j.message||'';
+      const lg = $('#jLog'); if(lg){ lg.textContent=(j.log||[]).join('\n'); lg.scrollTop=lg.scrollHeight; }
+      const cb = $('#jCancel'); if(cb) cb.style.display = live? '' : 'none';
+      const sb = $('#jSkip');   if(sb) sb.style.display = live? '' : 'none';
+      if(!live) prog.querySelector('i').style.width = '100%';
+    }
+    // ⚠️⚠️ **收尾绝不能挂在"弹窗还开着"这个条件上。**
+    //
+    // 这里原来是:`if(!host.querySelector('.prog')){ clearInterval(timer); return; }`
+    // —— 用户嫌慢把进度窗一关(点关闭或按 Esc),轮询当场停掉,**onDone 永远不执行**。
+    // 后果:导入其实成功了、数据也写进库了,但 loadChapters() 从来不跑,
+    // 界面上还是「还没有章节」。**数据是对的,界面是死的,而且不报错。**
+    // 用户看到的就是「导入完了在章节管理里看不到」。
+    //
+    // ⇒ 轮询和"画面是否还在"必须解耦:画面没了就只跳过**更新画面**这一步。
     if(!live){
-      clearInterval(timer);
-      host.querySelector('.prog i').style.width = '100%';
+      stop();
       if(onDone) onDone(j);
       refreshState();
     }
-  }, 1000);
+  };
+  timer = setInterval(tick, 1000);
+  tick();
 }
 
 /* ============================== 弹窗 ============================== */

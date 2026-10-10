@@ -50,7 +50,7 @@ PORT = 8611
 # ⚠️ 以前设置页那行「版本」显示的是 capture.status()["version"],那是 **Chrome 的版本**,
 # 不是本软件的。label 写的确实是「浏览器版本」,但用户看到的就一个版本号,
 # 会当成软件版本 —— 加这一行区分开。
-APP_VERSION = "1.4"
+APP_VERSION = "1.5"
 
 # ⚠️ 这个名字不能叫 log —— 下面几行就有一个 def log(*a)。
 # 叫 log 的话会被那个函数覆盖,而 AttributeError 出现在两个很难查的地方:
@@ -432,6 +432,90 @@ def rss_generate_job(ctx, payload):
 COVER_UA = {"User-Agent": "CEVTUO-RWP/1.1 (cover search)"}
 
 
+# --------------------------------------------------------------- 背景图 ----
+# 用户要求:能换背景,「链接给它它自己处理」,而且「背景要全铺满,
+# 要调整合适,**而不是拉伸的**」。
+#
+# ⚠️ 最后那半句是这件事的技术核心:铺满有两种做法,长得完全不一样 ——
+#    `background-size: 100% 100%` ⇒ 图被**拉伸变形**(宽高比没了);
+#    `background-size: cover`    ⇒ 保持比例、**裁掉溢出**。
+#    用户要的是后者。这里存图时不动宽高比,前端用 cover,两边一致。
+#
+# 背景图存哪儿:**库目录下的 bg.jpg**,和封面(covers/)并列。
+# 只存一份 —— 它是全局的外观设置,不跟着某个合集走。
+def _bg_path():
+    return store.lib_dir() / "bg.jpg"
+
+
+def _bg_info():
+    p = _bg_path()
+    if not p.exists():
+        return {"has_bg": False}
+    try:
+        from PIL import Image
+        with Image.open(p) as im:
+            w, h = im.size
+        return {"has_bg": True, "width": w, "height": h,
+                "bytes": p.stat().st_size,
+                "mtime": int(p.stat().st_mtime)}
+    except Exception:
+        return {"has_bg": True, "bytes": p.stat().st_size,
+                "mtime": int(p.stat().st_mtime)}
+
+
+def _bg_normalize(raw):
+    """把用户给的任何图处理成**当背景合适**的样子。
+
+    做三件事,少一件都会出问题:
+      ① **转正方向**。手机拍的图带 EXIF Orientation,不 `exif_transpose`
+         就存下来,显示的时候是躺倒的 —— 而且看起来像"图本身有问题"。
+      ② **压到大图上限**。背景是满屏铺的,2560 宽足够任何常见屏;
+         不压的话一张 12000×8000 的原图会变成几十 MB 的背景,
+         每次开界面都要把它读进内存。
+      ③ ⚠️ **绝不改宽高比**。这里只等比缩放 —— 一旦按某个固定尺寸拉伸,
+         图就变形了,而那正是用户明确说不要的(「而不是拉伸的」)。
+    """
+    import io as _io
+    from PIL import Image, ImageOps
+    im = Image.open(_io.BytesIO(raw))
+    im = ImageOps.exif_transpose(im) or im
+    if im.mode not in ("RGB", "L"):
+        im = im.convert("RGB")
+    MAXW = 2560
+    if im.width > MAXW:
+        im = im.resize((MAXW, max(1, round(im.height * MAXW / im.width))),
+                       Image.LANCZOS)
+    out = _io.BytesIO()
+    im.save(out, "JPEG", quality=88, optimize=True, progressive=True)
+    return out.getvalue(), im.size
+
+
+def _bg_fetch(url):
+    """把链接里的图抓下来。和封面同一套三级重试。
+
+    ⚠️ 图床大多校 Referer(防盗链),只发 UA 会吃 401/403。
+    """
+    import requests
+    from urllib.parse import urlparse as _up
+    u = _up(url)
+    origin = f"{u.scheme}://{u.netloc}/"
+    raw, why = b"", "下载失败"
+    for hdr in ({"User-Agent": COVER_UA["User-Agent"], "Referer": origin},
+                dict(COVER_UA),
+                {"User-Agent": "Mozilla/5.0 (compatible; CEVTUO-RWP/1.5)",
+                 "Referer": origin}):
+        try:
+            r = requests.get(url, headers=hdr, timeout=25,
+                             allow_redirects=True)
+            if r.status_code == 200 and r.content:
+                raw = r.content
+                break
+            why = f"HTTP {r.status_code}"
+        except Exception as e:
+            why = str(e)[:100]
+    return raw, why
+
+
 def _cover_from_google(q, n=8):
     import requests
     r = requests.get("https://www.googleapis.com/books/v1/volumes",
@@ -618,6 +702,7 @@ class Handler(BaseHTTPRequestHandler):
                               "base": str(BASE), "opml": str(OPML_PATH)},
                     "app": "CEVTUO-RWP",
                     "app_version": APP_VERSION,
+                    "bg": _bg_info(),
                 })
             elif r == "/api/collections":
                 json_resp(self, {"collections": store.list_collections()})
@@ -634,6 +719,8 @@ class Handler(BaseHTTPRequestHandler):
                 json_resp(self, library())
             elif r == "/api/cover":
                 self._serve_cover(qs.get("id", [""])[0])
+            elif r == "/api/bg":
+                self._serve_bg()
             elif r == "/api/rss/sources":
                 cats = opml.read(OPML_PATH)
                 json_resp(self, {
@@ -828,6 +915,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._fill_missing_covers(b)
         if r == "/api/cover/fromUrl":
             return self._cover_from_url(b)
+        # ------------------------------------------------------ 背景图 ----
+        if r == "/api/bg/fromUrl":
+            # 给图片直链 ⇒ 直接设成背景;给网页 ⇒ 把里面够大的图列出来让他挑
+            return self._bg_from_url(b)
+        if r == "/api/bg/save":
+            return self._bg_save(b)
+        if r == "/api/bg/reset":
+            return self._bg_reset(b)
         if r == "/api/cover/reset":
             # 把封面清掉 ⇒ 下次 /api/cover 会按「只有书名和作者」重新生成
             c = store.get_collection(b.get("id") or "")
@@ -1071,6 +1166,12 @@ class Handler(BaseHTTPRequestHandler):
                     "title": extract_page.guess_title(html or "")}
         if r == "/api/job/cancel":
             return {"ok": jobs.cancel(b.get("id"))}
+        if r == "/api/job/skip":
+            # 跳过**当前跑得最久的那一条**,后面的继续跑。
+            # ⚠️ 和 cancel 是两件事:用户在「很多链接」时,一个卡住的页面
+            # 不该逼他放弃整批(原话:「确保我可以一定做完,而不是只能取消」)。
+            k = jobs.skip(b.get("id"))
+            return {"ok": k is not None, "skipped": k}
 
         return {"ok": False, "err": f"未知接口 {r}"}
 
@@ -1294,6 +1395,112 @@ class Handler(BaseHTTPRequestHandler):
 
     def _save_cover_url(self, b):
         return self._download_cover(b.get("id"), b.get("url"))
+
+    # ---------------------------------------------------------- 背景图 ----
+    def _serve_bg(self):
+        """把背景图发出去。没有自定义背景时 404 —— 界面会落回自带壁纸。
+
+        ⚠️ 和封面同理:**必须走 HTTP,不能用 file://**
+        (界面的来源是 http://127.0.0.1:8611,file:// 子资源会被直接拦掉)。
+        """
+        p = _bg_path()
+        if not p.exists():
+            self.send_error(404, "no custom background")
+            return
+        data = p.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "image/jpeg")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")   # 换背景要立刻看见
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _bg_store(self, raw, where):
+        """处理 + 落盘。**所有设背景的入口都走这里**(链接 / 本地文件)。
+
+        ⚠️ 收敛到一个入口是故意的:方向、尺寸、宽高比这三件事只在这里做一次。
+        分开写两份的话,迟早只改一处 —— 那就变成"从链接设的背景是正的,
+        从文件设的是躺倒的"这种只在某一条路上出现的毛病。
+        """
+        if len(raw or b"") < 800:
+            return {"ok": False, "err": "这张图太小了,当背景会很糊"}
+        try:
+            data, (w, h) = _bg_normalize(raw)
+        except Exception as e:
+            return {"ok": False, "err": f"这张图打不开: {str(e)[:90]}"}
+        if w < 320 or h < 200:
+            return {"ok": False, "err": f"图太小了({w}×{h}),当背景会糊"}
+        p = _bg_path()
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(data)
+        except Exception as e:
+            return {"ok": False, "err": f"保存失败: {str(e)[:80]}"}
+        # ⚠️ 带上 mtime:前端拿它当"图换了没有"的判据(见 applyBg)。
+        #    少了它,前端只能每次都用新 URL 去拿,背景图会周期性重载、一直闪。
+        return {"ok": True, "width": w, "height": h, "bytes": len(data),
+                "mtime": int(p.stat().st_mtime), "from": where}
+
+    def _bg_from_url(self, b):
+        """从一个链接把背景图取下来。
+
+        给图片直链就直接用;给网页就把页面里最大的图挑出来
+        (用户的要求是「我给链接它可以自己处理」,不该让他先自己找图)。
+        """
+        raw_url = (b.get("url") or "").strip()
+        if not raw_url.lower().startswith(("http://", "https://")):
+            return {"ok": False, "err": "请填一个 http/https 开头的链接"}
+        if re.search(r"\.(jpe?g|png|webp|gif|bmp|avif)(\?|$)", raw_url, re.I):
+            data, why = _bg_fetch(raw_url)
+            if not data:
+                return {"ok": False, "err": why}
+            r = self._bg_store(data, "链接")
+            if not r.get("ok") and "打不开" in (r.get("err") or ""):
+                # 对方按 HTML 返回了(有些图床直链会重定向到网页),再当网页试一次
+                pass
+            else:
+                return r
+        # 当作网页:把里面的候选图列出来
+        import requests
+        from urllib.parse import urljoin
+        try:
+            rr = requests.get(raw_url, headers=COVER_UA, timeout=25)
+            rr.raise_for_status()
+            page = rr.text
+        except Exception as e:
+            return {"ok": False, "err": f"打不开这个链接: {str(e)[:90]}"}
+        cands = self._images_in_page(page, raw_url, urljoin)
+        # 背景要的是**大图**,所以要滤掉小图标。
+        # ⚠️⚠️ 但 `og:image` / `twitter:image` **必须无条件放行** ——
+        #    它们是从 <meta> 里取的,`_images_in_page` 给它们的 w 是 0
+        #    (meta 标签里根本没写宽高)。只看宽度会把**站点自己认定的那张
+        #    代表图**滤掉,剩下的全是正文里的小配图 —— 恰恰选反了。
+        big = [c for c in cands
+               if c.get("source") in ("og:image", "twitter:image")
+               or (c.get("w") or 0) >= 800]
+        return {"ok": True, "kind": "page", "images": big or cands,
+                "page_title": (re.search(r"<title[^>]*>(.*?)</title>", page,
+                                         re.S | re.I) or [None, ""])[1].strip()[:120]}
+
+    def _bg_save(self, b):
+        data_url = b.get("data_url") or ""
+        if "," not in data_url:
+            return {"ok": False, "err": "没有图片数据"}
+        _head, b64 = data_url.split(",", 1)
+        try:
+            raw = base64.b64decode(b64)
+        except Exception as e:
+            return {"ok": False, "err": f"图片数据坏了: {str(e)[:60]}"}
+        return self._bg_store(raw, "本机文件")
+
+    def _bg_reset(self, b):
+        p = _bg_path()
+        try:
+            if p.exists():
+                p.unlink()
+        except Exception as e:
+            return {"ok": False, "err": str(e)[:80]}
+        return {"ok": True}
 
     def _fill_missing_covers(self, b):
         """给还没有封面的合集批量补一张。

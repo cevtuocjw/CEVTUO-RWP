@@ -146,20 +146,22 @@ def _short_err(e):
     return (s[:150] + "…") if len(s) > 150 else s
 
 
-def fetch_html(url, use_chrome=True, timeout=60, should_stop=None):
+def fetch_html(url, use_chrome=True, timeout=60, should_stop=None,
+               should_skip=None):
     """返回 (html, via, err)。via ∈ chrome | http | ''(失败)。
 
-    ⚠️⚠️ **取消必须穿过去**:`capture.Cancelled` 不能被下面这几个
-    `except Exception` 吃掉。吃掉会发生什么(实测 2026-10-10):
+    ⚠️⚠️ **取消和跳过都必须穿过去**:`capture.Cancelled` / `capture.Skipped`
+    不能被下面这几个 `except Exception` 吃掉。吃掉会发生什么(实测 2026-10-10):
     Chrome 已经在 0.5 秒内响应了取消并抛出,这里却把它记成"Chrome 渲染失败",
-    然后**转身去试直连** —— 而直连没有取消机制,一个滴流的页面又能挂 25 秒。
+    然后**转身去试直连** —— 而直连没有中断机制,一个滴流的页面又能挂 25 秒。
     用户点了取消,整批反而多等 27.6 秒。**取消被降级 = 取消失效。**
     """
     errs = []
     if use_chrome:
         try:
             html, err = capture.render(url, timeout=timeout,
-                                       should_stop=should_stop)
+                                       should_stop=should_stop,
+                                       should_skip=should_skip)
             if html and len(html) > 400:
                 bad = browser_error_page(html)
                 if not bad:
@@ -167,14 +169,16 @@ def fetch_html(url, use_chrome=True, timeout=60, should_stop=None):
                 errs.append(bad + " · Chrome")
             elif err:
                 errs.append(err)
-        except capture.Cancelled:
+        except (capture.Cancelled, capture.Skipped):
             raise
         except Exception as e:
             log.warning("Chrome 渲染失败 %s: %s", url, e)
             errs.append(_short_err(e))
-    # 直连之前再问一次 —— 用户可能是在 Chrome 那一段里点的取消。
+    # 直连之前再问一次 —— 用户可能是在 Chrome 那一段里点的取消/跳过。
     if should_stop and should_stop():
         raise capture.Cancelled("已取消")
+    if should_skip and should_skip():
+        raise capture.Skipped("已跳过")
     try:
         html = http_get(url)
         bad = browser_error_page(html)
@@ -190,6 +194,11 @@ def fetch_html(url, use_chrome=True, timeout=60, should_stop=None):
 
 # 正文短于这个字数就不像「一篇文章」了 —— 通常是付费墙预览、摘要页,或没加载完。
 _SHORT = 200
+
+# 用户手动跳过的章节,占位章的说明文字。
+# ⚠️ 和「抓取失败」**必须分开写**:一个是他自己点的跳过,一个是真失败了。
+# 写成同一句话,他就分不清"是我跳的"还是"它坏了"。
+SKIP_NOTE = "已跳过(你点了跳过,可以稍后单独重抓这一章)"
 
 
 def _quality_note(n):
@@ -212,14 +221,15 @@ def _placeholder(url, title_hint, why):
 
 
 def article_from_url(url, use_chrome=True, title_hint=None, timeout=60,
-                     should_stop=None):
+                     should_stop=None, should_skip=None):
     """抓一个 URL 并抽正文。
 
     返回 (art, why)。成功时 why="",art["note"] 里可能带「内容偏短」提示;
     失败时 art=None,why 是可以直接显示给用户看的原因。
     """
     html, via, err = fetch_html(url, use_chrome=use_chrome, timeout=timeout,
-                                should_stop=should_stop)
+                                should_stop=should_stop,
+                                should_skip=should_skip)
     if not html:
         return None, (err or "抓取失败")
     art = extract_page.extract_article(html, url, title_hint=title_hint)
@@ -277,14 +287,25 @@ def import_urls(ctx, cid, urls, use_chrome=True, timeout=60, workers=3):
             with lock:
                 results[i] = (u, None, "已取消")
             return
+        ctx.begin_item(i)          # ← 登记在途,「跳过」靠它挑出跑得最久的那条
         try:
             art, why = article_from_url(u, use_chrome=use_chrome,
                                         timeout=timeout,
-                                        should_stop=ctx.should_stop)
+                                        should_stop=ctx.should_stop,
+                                        should_skip=lambda: ctx.should_skip(i))
         except capture.Cancelled:
             with lock:
                 results[i] = (u, None, "已取消")
             return
+        except capture.Skipped:
+            with lock:
+                results[i] = (u, None, SKIP_NOTE)
+                n = len(results)
+                ctx.progress(n, len(urls), f"[{n}/{len(urls)}] 已跳过 {u[:60]}")
+                ctx.log(f"⏭ 已跳过 {u[:70]}")
+            return
+        finally:
+            ctx.end_item(i)
         with lock:
             results[i] = (u, art, why)
             n = len(results)
@@ -361,15 +382,26 @@ def import_links(ctx, cid, links, use_chrome=True, timeout=60, workers=3):
             with lock:
                 results[i] = (l, None, "已取消")
             return
+        ctx.begin_item(i)
         try:
             art, why = article_from_url(u, use_chrome=use_chrome,
                                         title_hint=l.get("title"),
                                         timeout=timeout,
-                                        should_stop=ctx.should_stop)
+                                        should_stop=ctx.should_stop,
+                                        should_skip=lambda: ctx.should_skip(i))
         except capture.Cancelled:
             with lock:
                 results[i] = (l, None, "已取消")
             return
+        except capture.Skipped:
+            with lock:
+                results[i] = (l, None, SKIP_NOTE)
+                n = len(results)
+                ctx.progress(n, len(links), f"[{n}/{len(links)}] 已跳过 {u[:60]}")
+                ctx.log(f"⏭ 已跳过 {u[:70]}")
+            return
+        finally:
+            ctx.end_item(i)
         with lock:
             results[i] = (l, art, why)
             n = len(results)
