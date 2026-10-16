@@ -29,6 +29,7 @@ openJob() 里的轮询原来是这么收尾的:
 因为它把"界面会不会刷新"这一步整个跳过了 —— 而那正是坏掉的地方。
 """
 import json
+import os
 import sys
 import threading
 import time
@@ -67,6 +68,11 @@ def fixture():
     return srv, "http://127.0.0.1:%d" % srv.server_address[1]
 
 
+
+# ⚠️ 被测的 app 地址可以换 —— 这样一套断言能对着**沙盒实例**跑,
+#    不必拿用户正在用的那份真实数据当靶子(它默认还是 8611)。
+APP = os.environ.get("RWP_BASE", "http://127.0.0.1:8611")
+
 OK, BAD = [], []
 
 
@@ -80,16 +86,18 @@ if __name__ == "__main__":
     srv, base = fixture()
     print("夹具 %s,每页慢 %.1fs\n" % (base, SLOW))
 
-    capture.kill_chrome()
-    time.sleep(1.0)
-    ok, err = capture.ensure()
-    if not ok:
-        print("Chrome 起不来:", err)
-        sys.exit(2)
-
-    tab = capture.Tab(capture.DEFAULT_PORT, timeout=60)
+    # ⚠️ 先**复用**已经开着的那个 Chrome —— 无条件 kill_chrome() 会把用户
+    #    正在用的采集浏览器杀掉再拉起(导入到一半会更糟),而我们只是要开一个标签页。
     try:
-        tab.cmd("Page.navigate", {"url": "http://127.0.0.1:8611/"})
+        tab = capture.Tab(capture.DEFAULT_PORT, timeout=60)
+    except Exception:
+        ok, err = capture.ensure()
+        if not ok:
+            print("Chrome 起不来:", err)
+            sys.exit(2)
+        tab = capture.Tab(capture.DEFAULT_PORT, timeout=60)
+    try:
+        tab.cmd("Page.navigate", {"url": APP + "/"})
         # 等 app 的脚本就绪
         for _ in range(60):
             time.sleep(0.5)

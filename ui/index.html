@@ -351,6 +351,22 @@ details.arch>summary:hover{border-color:color-mix(in srgb,var(--accent) 28%,tran
 .modal .hd h3{margin:0;font-size:15px;flex:1;min-width:0;white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
 .modal .bd{padding:18px;overflow:auto;flex:1}
+/* 弹窗里的「没做成」必须留在原地。
+   ⚠️ 以前失败只弹一个 2.8 秒的 toast —— 用户没看见就等于**什么都没发生**,
+   而弹窗已经关了、界面上一切照旧,读起来就是「按钮点不动」。
+   这条要把错误**钉在弹窗里**,直到用户自己处理。 */
+.modal-err{margin-top:12px;padding:10px 12px;border-radius:var(--radius-md);
+  font-size:12.5px;line-height:1.55;word-break:break-word;
+  background:rgba(200,60,60,.10);border:1px solid rgba(200,60,60,.35);
+  color:#b03030}
+[data-theme="dark"] .modal-err{color:#ff9a9a;background:rgba(255,90,90,.13);
+  border-color:rgba(255,90,90,.34)}
+.modal-err[hidden]{display:none}
+/* 忙的时候按钮要**看得出来在忙**。
+   ⚠️ 原来只做 `disabled=true`,而 `.btn:disabled` 只把不透明度降到 .45 ——
+   一个慢请求(几秒)和一个死掉的按钮**在屏幕上长得一模一样**。
+   用户的原话就是「点击确定点不动」。 */
+.btn.busy{position:relative;pointer-events:none}
 .modal .ft{padding:14px 18px;border-top:1px solid var(--line-soft);display:flex;
   gap:9px;justify-content:flex-end;align-items:center}
 .x{border:0;background:none;font-size:20px;line-height:1;cursor:pointer;
@@ -479,6 +495,7 @@ const I18N = {
     "nav.collections":"CEVTUO合集坊","nav.rss":"Rssdailyepub",
     "nav.library":"书库","nav.settings":"设置",
     "common.ok":"确定","common.close":"关闭","common.save":"保存","common.cancel":"取消",
+    "common.working":"处理中…","common.viewFail":"这一屏打不开:",
     "common.delete":"删除","common.edit":"编辑","common.open":"打开","common.reveal":"在访达显示",
     "ch.refetch":"再次获取","ch.refetching":"获取中…","ch.refetchOk":"已重新获取,共 {n} 字",
     "ch.refetchFail":"重新获取失败:","ch.up":"上移","ch.down":"下移",
@@ -515,6 +532,9 @@ const I18N = {
     "common.back":"返回","common.refresh":"刷新","common.new":"新建",
     "coll.title":"CEVTUO合集坊","coll.new":"＋ 新建合集","coll.empty":"还没有合集。新建一个,然后导入内容。",
     "coll.name":"合集名称(会成为书名)","coll.author":"作者","coll.lang":"语言代码",
+    "coll.nameRequired":"先填合集名称。",
+    "coll.createNoId":"服务端没有返回合集 —— 没有建成,请重试。",
+    "coll.missing":"这个合集找不到了(可能刚被删掉)。已回到合集列表。",
     "coll.saveMeta":"保存信息","coll.cover":"上传封面","coll.del":"删除合集",
     "coll.delConfirm":"删除这个合集(含所有章节)?已导出的 epub 也会删掉。",
     "coll.ready":"篇有正文","coll.chapters":"章",
@@ -595,6 +615,7 @@ const I18N = {
     "nav.collections":"CEVTUO Studio","nav.rss":"Rssdailyepub",
     "nav.library":"Library","nav.settings":"Settings",
     "common.ok":"OK","common.close":"Close","common.save":"Save","common.cancel":"Cancel",
+    "common.working":"Working…","common.viewFail":"Cannot open this screen:",
     "common.delete":"Delete","common.edit":"Edit","common.open":"Open","common.reveal":"Reveal in Finder",
     "ch.refetch":"Refetch","ch.refetching":"Fetching…","ch.refetchOk":"Refetched — {n} chars",
     "ch.refetchFail":"Refetch failed: ","ch.up":"Move up","ch.down":"Move down",
@@ -633,6 +654,9 @@ const I18N = {
     "coll.title":"CEVTUO Studio","coll.new":"+ New collection","coll.empty":"No collections yet. Create one, then import content.",
     "coll.name":"Collection name (becomes the book title)","coll.author":"Author","coll.lang":"Language code",
     "coll.saveMeta":"Save details","coll.cover":"Upload cover","coll.del":"Delete collection",
+    "coll.nameRequired":"Give the collection a name first.",
+    "coll.createNoId":"The server did not return a collection — nothing was created. Try again.",
+    "coll.missing":"That collection no longer exists (it may have been deleted). Back to the list.",
     "coll.delConfirm":"Delete this collection (and all its chapters)? Exported EPUBs will be removed too.",
     "coll.ready":"with content","coll.chapters":"ch.",
     "ch.empty":"No chapters yet. Use Import, or add a blank page.",
@@ -721,6 +745,17 @@ function applyStaticI18n(){
 const $ = (s,r=document)=>r.querySelector(s);
 const $$ = (s,r=document)=>Array.from(r.querySelectorAll(s));
 const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* 「来源」= 这篇文章从哪个**网站**来的。
+   ⚠️ 不叫 source —— 库里那一列 source 存的是 `urls`/`website`/`rss`/`markdown`,
+   那是**导入方式**,不是来源。每日书那边用的是 feed 名,合集这边没有 feed,
+   最接近的权威信息就是 url 的域名。 */
+function srcHost(u){
+  try{ return (new URL(String(u)).hostname || '').replace(/^www\./,''); }
+  catch(e){ return ''; }          // 没有 url / 不是合法 url ⇒ 没有来源可言
+}
+/* 章节上的日期。库里存的是 "YYYY-MM-DD HH:MM:SS",列表里只要到天。 */
+const fmtDay = s => String(s||'').slice(0,10);
 async function api(path,opt){
   const r = await fetch(path, Object.assign({headers:{'Content-Type':'application/json'}},opt));
   const txt = await r.text();
@@ -804,8 +839,24 @@ $('#chipChrome').onclick = async ()=>{
 function setView(v,arg){
   S.view=v; S.viewArg=arg;
   $$('#nav button').forEach(b=>b.classList.toggle('on', b.dataset.v===v || (v==='collection'&&b.dataset.v==='collections')));
-  ({collections:renderCollections, collection:()=>renderCollection(arg),
-    rss:renderRss, library:renderLibrary, settings:renderSettings}[v]||renderCollections)();
+  // ⚠️⚠️ 渲染函数是 async,而这里**不能 await**(setView 是同步的,调用方遍地都是)。
+  //    以前直接裸调 —— 于是 renderCollection 里任何一次 throw 都变成
+  //    「无人处理的 promise 拒绝」:**不报错、不弹提示、界面停在上一屏**。
+  //    合集没建成功时用户看到的就是「点了确定,什么都没发生」。
+  //    这里把它兜住,失败要有动静,并且退回合集列表(而不是停在一个半死的页面上)。
+  const run = ({collections:renderCollections, collection:()=>renderCollection(arg),
+    rss:renderRss, library:renderLibrary, settings:renderSettings}[v]||renderCollections);
+  Promise.resolve().then(run).catch(err=>{
+    const msg = String((err && err.message) || err) || '?';
+    window.__lastErr = msg;
+    toast(t('common.viewFail') + ' ' + msg);
+    if(v === 'collection'){
+      // 这一屏已经渲染不出来了 —— 退回合集列表,别留个半死的页面。
+      S.view = 'collections'; S.viewArg = undefined;
+      $$('#nav button').forEach(b=>b.classList.toggle('on', b.dataset.v==='collections'));
+      Promise.resolve().then(renderCollections).catch(()=>{});
+    }
+  });
 }
 $$('#nav button').forEach(b=>b.onclick=()=>setView(b.dataset.v));
 
@@ -838,14 +889,30 @@ function newCollectionModal(){
             <option value="en">en</option><option value="ja">ja</option></select></label>`,
     okText:t('common.ok'),
     onOk: async ()=>{
-      const v=$('#ncTitle').value.trim(); if(!v){toast('—');return false;}
-      const c = await post('/api/collection/create',{title:v,author:$('#ncAuthor').value.trim(),language_code:$('#ncLang').value});
-      closeModal(); setView('collection', c.id);
+      const v=$('#ncTitle').value.trim();
+      // ⚠️ 以前这里是 `toast('—')` —— 用户看到的就是一个破折号,等于什么都没说。
+      if(!v){ modalErr(t('coll.nameRequired')); $('#ncTitle').focus(); return; }
+      const c = await post('/api/collection/create',
+        {title:v,author:$('#ncAuthor').value.trim(),language_code:$('#ncLang').value});
+      // ⚠️ 以前不检查返回体:即使服务端回了 `{ok:false}` 或空对象,
+      //    也会带着 `undefined` 去 setView,然后在别处炸成一个看不见的 rejection。
+      if(!c || !c.id) throw new Error(t('coll.createNoId'));
+      // ⚠️⚠️ 顺序:先**确认拿到合集**再关弹窗。
+      //    以前是 closeModal() 在前 —— 后面任何一步失败,弹窗早就没了,
+      //    屏幕上什么都不会发生,用户读作「点确定点不动」。这是静默死亡。
+      closeModal();
+      setView('collection', c.id);   // 自己的错误处理在 setView 里
     }});
 }
 
 async function renderCollection(cid){
+  // ⚠️ 这里以前是 `const c = await get(...)` 然后直接 `c.title`。
+  //    合集不存在时接口回 404+{err},api() 会抛 —— 抛在 async 函数里没人接
+  //    (setView 是同步的、不 await),于是**静默**。现在有 setView 兜着,
+  //    同时这里给一句人话,而不是让用户对着空白猜。
+  if(!cid) throw new Error(t('coll.missing'));
   const c = await get('/api/collection?id='+encodeURIComponent(cid));
+  if(!c || !c.title) throw new Error(t('coll.missing'));
   $('#title').textContent = c.title;
   const langs=['zh-CN','zh-TW','en','ja'];
   $('#view').innerHTML = `
@@ -921,7 +988,9 @@ async function loadChapters(cid){
   box.innerHTML = A.map((a,i)=>`<div class="ch${a.note?' warn':''}">
       <div class="no">${i+1}</div>
       <div class="ti" data-open="${a.id}"><b>${esc(a.title||'')}</b>
-        <small>${a.body_len? a.body_len+(LANG==='zh'?' 字':' ch'):'—'} · ${esc(a.url||a.source||'')} · ${esc(a.mode||'')}</small>
+        <small>${[srcHost(a.url), fmtDay(a.created_at),
+                    (a.body_len? a.body_len+(LANG==='zh'?' 字':' ch'):''),
+                    (a.mode||'')].filter(Boolean).map(esc).join(' · ')}</small>
         ${a.note?`<span class="chnote" title="${esc(a.note)}"><svg class="ico"><use href="#i-warn"/></svg><span>${esc(a.note)}</span></span>`:''}</div>
       <button class="btn sm" data-up="${a.id}" title="${t('ch.up')}">↑</button>
       <button class="btn sm" data-dn="${a.id}" title="${t('ch.down')}">↓</button>
@@ -1854,12 +1923,23 @@ function openJob(jid,onDone){
 }
 
 /* ============================== 弹窗 ============================== */
+
+/* 弹窗里显示出错的那一块。带 id 的元素在弹窗里只可能有一个。
+   ⚠️ 单独抽出来是因为「失败要留在弹窗里」这条要在**每个**弹窗里一致 ——
+   以前每个弹窗各写各的,于是就出现了「创建失败只是闪一下就没了」。 */
+function modalErr(msg){
+  const box = $('#modalErr');
+  if(!box) { toast(msg); return; }        // 弹窗已经关了,退化成 toast
+  box.textContent = msg; box.hidden = false;
+}
+function modalErrClear(){ const b = $('#modalErr'); if(b){ b.hidden = true; b.textContent=''; } }
+
 function modal(opt){
   closeModal();
   const host = $('#modalHost');
   host.innerHTML = `<div class="mask"><div class="modal ${opt.wide?'wide':''}">
       <div class="hd"><h3>${esc(opt.title)}</h3><button class="x">&times;</button></div>
-      <div class="bd">${opt.body}</div>
+      <div class="bd">${opt.body}<div class="modal-err" id="modalErr" hidden></div></div>
       <div class="ft"><button class="btn" data-x>${t('common.close')}</button>
         ${opt.onOk?`<button class="btn primary" data-ok>${esc(opt.okText||t('common.ok'))}</button>`:''}</div>
     </div></div>`;
@@ -1868,8 +1948,24 @@ function modal(opt){
   $('[data-x]',el).onclick = closeModal;
   el.onclick = e=>{ if(e.target===el) closeModal(); };
   if(opt.onOk) $('[data-ok]',el).onclick = async ()=>{
-    const b=$('[data-ok]',el); b.disabled=true;
-    try{ await opt.onOk(); }catch(e){ toast(String(e.message||e)); }finally{ b.disabled=false; }
+    const b=$('[data-ok]',el);
+    const label = b.innerHTML;
+    modalErrClear();
+    b.disabled = true; b.classList.add('busy');
+    // 忙的时候换掉文案 —— 一个慢请求和一个死按钮必须**长得不一样**。
+    b.textContent = opt.okBusy || t('common.working');
+    try{
+      // 成功路径由 onOk 自己调 closeModal();它**不**关就等于留在原地
+      await opt.onOk();
+    }catch(e){
+      const msg = String((e && e.message) || e) || '?';
+      window.__lastErr = msg;
+      modalErr(msg);            // 钉在弹窗里
+      toast(msg);               // 顺手再闪一下,用户正在看别处时也能注意到
+    }finally{
+      // ⚠️ 弹窗可能已经被 onOk 自己关掉了(成功路径),这时候动 b 会指到游离节点上。
+      if(document.contains(b)){ b.disabled=false; b.classList.remove('busy'); b.innerHTML=label; }
+    }
   };
   return el;
 }
@@ -1878,6 +1974,24 @@ window.closeModal = closeModal;
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeModal(); });
 
 /* ============================== 启动 ============================== */
+
+/* ⭐⭐⭐ 最后一层安全网:任何漏出来的异常都要**看得见**。
+   起因:用户报「新建合集点确定点不动」。查到最后发现**根本无从查起** ——
+   setView() 里的渲染是 async 的、没人 await,异常变成「无人处理的 promise 拒绝」;
+   页面里**没有任何**全局错误处理,于是它在控制台之外**一点痕迹都没有**。
+   用户看到的是「没反应」,我们看到的是「一切正常」。
+   ⇒ 这两句是这次修复里最值钱的部分:**下次它会自己说出来**。 */
+window.addEventListener('unhandledrejection', e=>{
+  const msg = String((e.reason && (e.reason.message || e.reason)) || e.reason || '?');
+  window.__lastErr = msg;
+  toast(t('common.viewFail') + ' ' + msg);
+});
+window.addEventListener('error', e=>{
+  const msg = String((e.error && e.error.message) || e.message || '?');
+  window.__lastErr = msg;
+  toast(t('common.viewFail') + ' ' + msg);
+});
+
 (async function boot(){
   applyStaticI18n(); applyTheme(); applyGlass(0.62);
   await refreshState();

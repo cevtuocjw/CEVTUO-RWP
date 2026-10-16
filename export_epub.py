@@ -17,6 +17,16 @@ from urllib.parse import urlparse
 
 log = logging.getLogger("export_epub")
 
+# ⚠️⚠️ **产物的形状一改,这个数就 +1。**
+# 为什么必须有它:改了导出的版式之后,**已经导出的老书和新书长得不一样**,
+# 而两者在书库里并排躺着、文件名只差日期 —— 没有任何东西会告诉你为什么不同。
+# 有了它,「这本书是哪一版做的」是一个**可查的事实**,不是一个记忆。
+# 同时它会被写进 EPUB 的元数据里(见 build()),所以能直接读出来核对。
+#   1 → 最初的版式
+#   2 → 章节页眉加上「来源(域名) · 日期 · 原文链接」(和每日书对齐)
+BOOK_FORMAT_VERSION = 2
+#   ⚠️ 改了章节页眉/目录/扉页的任何一处,都要动这个数;只改正文样式不用动。
+
 CSS = """
 body { font-family: -apple-system,'PingFang SC','Helvetica Neue',Georgia,serif;
   line-height:1.7; color:#1a1a1a; margin:1em; }
@@ -33,6 +43,7 @@ td, th { border:1px solid #ddd; padding:.35em .6em; }
 .titlepage h1 { font-size:2.2em; }
 .titlepage p { color:#666; }
 p.meta { font-size:.8em; color:#666; margin:.2em 0 1em; }
+p.meta span.src { color:#333; }
 /* 没下到的图留下的占位标记:阅读器里什么都不显示,但"再补一次"找得到它 */
 span.cevtuo-miss { display:none; }
 nav.topbar { font-size:.84em; padding:.5em .75em; margin:0 0 1.1em;
@@ -88,6 +99,23 @@ def _nav_bar(i, total):
 def _esc(s):
     return (str(s).replace("&", "&amp;").replace("<", "&lt;")
             .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def _src_host(url):
+    """「来源」= 这篇文章从哪个**网站**来 —— 取 url 的域名。
+
+    ⚠️ 不是库里那个 `source` 字段:它存的是 `urls`/`website`/`rss`/`markdown`,
+    那是**导入方式**,不是来源。用户说的「来源」是"哪个网站",
+    每日书那边对应的东西是 feed 名(feed_title),合集这边没有 feed,
+    最接近的权威信息就是域名。
+    没有 url(空白页 / 手写页)时**返回空** —— 那种页面本来就没有来源,
+    硬塞一个「手动」进去是编的。
+    """
+    try:
+        h = urlparse(str(url or "")).hostname or ""
+    except Exception:
+        return ""
+    return h[4:] if h.startswith("www.") else h
 
 
 def _xhtml(title, body):
@@ -439,6 +467,15 @@ def build(collection, articles, out_path, opts=None, on_progress=None):
     book.add_item(epub.EpubItem(uid="css", file_name="style.css",
                                 media_type="text/css",
                                 content=CSS.encode("utf-8")))
+    # 把版式版本号写进书里 —— 「这本书是哪一版做的」要**可查**,不能靠记。
+    # ⚠️ 只写进 OPF 的 meta:`add_metadata` 在 ebooklib 上对 epub2/3 都成立,
+    #    而塞进正文里会污染读者的目录和搜索。
+    try:
+        book.add_metadata("OPF", "meta", "",
+                          {"name": "cevtuo-format",
+                           "content": str(BOOK_FORMAT_VERSION)})
+    except Exception as e:
+        log.warning("写版式版本号失败: %s", e)
 
     def style(item):
         item.add_link(href="style.css", rel="stylesheet", type="text/css")
@@ -478,7 +515,13 @@ def build(collection, articles, out_path, opts=None, on_progress=None):
         if opts.get("embed_images", True):
             body = embedder.rewrite(body)
         elink = a.get("url") or ""
+        # 章节页眉三件套,和每日书 `feed_title · 日期 · 原文` 一一对应:
+        #   来源(域名) · 日期 · 原文链接
+        # 用户要的是「每章都能看到时间和来源」—— 每日书早就有,合集书一直没有。
         meta = []
+        src = _src_host(elink)
+        if src:
+            meta.append(f'<span class="src">{_esc(src)}</span>')
         if a.get("created_at"):
             meta.append(_esc(a["created_at"][:10]))
         if elink:

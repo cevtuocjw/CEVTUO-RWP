@@ -18,13 +18,14 @@
 """
 import http.server
 import json
+import os
 import socketserver
 import sys
 import threading
 import time
 import urllib.request
 
-APP = "http://127.0.0.1:8611"
+APP = os.environ.get("RWP_BASE", "http://127.0.0.1:8611")
 TIMEOUT_S = 45          # 故意设得比夹具的"卡死时间"短很多,好用时间当判据
 
 

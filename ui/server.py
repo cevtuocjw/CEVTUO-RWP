@@ -50,13 +50,24 @@ PORT = 8611
 # ⚠️ 以前设置页那行「版本」显示的是 capture.status()["version"],那是 **Chrome 的版本**,
 # 不是本软件的。label 写的确实是「浏览器版本」,但用户看到的就一个版本号,
 # 会当成软件版本 —— 加这一行区分开。
-APP_VERSION = "1.5"
+APP_VERSION = "1.6"
 
 # ⚠️ 这个名字不能叫 log —— 下面几行就有一个 def log(*a)。
 # 叫 log 的话会被那个函数覆盖,而 AttributeError 出现在两个很难查的地方:
 #   · _delete_book 结尾 —— 文件**已经删掉了**才抛,于是接口回报失败、文件其实没了
 #   · _write_index 里   —— 异常被 except 吞掉,索引永远写不进去且完全没提示
 slog = logging.getLogger("server")
+
+# ⚠️ 不配 handler 的话,INFO 级别的记录**会被直接丢掉**(Python 的兜底 handler
+#    只管 WARNING 以上),于是「我明明记了」和「没记」是一个结果。
+# 单独写一个文件,不和启动脚本重定向的 server.log 抢同一个 fd。
+try:
+    _fh = logging.FileHandler(BASE / "logs" / "requests.log", encoding="utf-8")
+    _fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    slog.addHandler(_fh)
+    slog.setLevel(logging.INFO)
+except Exception:
+    pass
 
 
 def log(*a):
@@ -69,6 +80,26 @@ def sanitize_filename(name, fallback="book"):
 
 
 # ------------------------------------------------------------------ 工具 -----
+def _reqlog(h, method, path, code, t0, extra=""):
+    """写请求(尤其是**失败**的请求)一律留痕。
+
+    ⚠️⚠️ 为什么要专门写一句:用户报「新建合集点确定点不动」,而 `log_message`
+    是**空的** —— 服务端对每一个请求**一个字都不记**。于是「请求根本没到」
+    和「到了但炸了」这两种完全不同的故障,在现场**长得一模一样**,
+    只能靠猜。这次查了两轮都没结论,根子就在这里。
+
+    只在**有信息量**的时候记(POST / 非 2xx),不刷屏:
+    读接口每 3 秒来一轮,全记下来会把日志淹掉。
+    """
+    if method == "GET" and 200 <= code < 300:
+        return
+    ms = int((time.time() - t0) * 1000)
+    line = "%s %s → %s (%dms)" % (method, path, code, ms)
+    if extra:
+        line += "  " + extra
+    slog.info("REQ %s", line)
+
+
 def json_resp(h, obj, code=200):
     body = json.dumps(obj, ensure_ascii=False, default=str).encode("utf-8")
     h.send_response(code)
@@ -885,11 +916,17 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         up = urlparse(self.path)
+        t0 = time.time()
         try:
             b = read_body(self)
             out = self._route_post(up.path, b)
             json_resp(self, out if out is not None else {"ok": True})
+            _reqlog(self, "POST", up.path, 200, t0)
         except Exception as e:
+            # ⚠️ 这里以前只回 `{"err": str(e)}` 就完了 —— **日志里一个字都没有**。
+            #    服务端异常和客户端失误在现场无法区分。现在带栈记一笔。
+            slog.error("POST %s 失败: %s", up.path, e, exc_info=True)
+            _reqlog(self, "POST", up.path, 400, t0, "err=%s" % e)
             json_resp(self, {"ok": False, "err": str(e)}, 400)
 
     def _route_post(self, r, b):

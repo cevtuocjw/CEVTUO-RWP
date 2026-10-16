@@ -22,6 +22,7 @@
 """
 import base64
 import json
+import os
 import sys
 import time
 
@@ -30,6 +31,11 @@ import capture
 W, H = 600, 400          # 视口。600/400 = 1.5
 IMG_W, IMG_H = 3200, 600  # 原图比例 5.333 —— 和视口差得远,拉伸会非常明显
 SQ = 200                  # 原图正中那个正方形的边长
+
+
+# ⚠️ 被测的 app 地址可以换 —— 这样一套断言能对着**沙盒实例**跑,
+#    不必拿用户正在用的那份真实数据当靶子(它默认还是 8611)。
+APP = os.environ.get("RWP_BASE", "http://127.0.0.1:8611")
 
 OK, BAD = [], []
 
@@ -101,14 +107,44 @@ if __name__ == "__main__":
     im.save(buf, "JPEG", quality=95)
     data_url = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
 
-    capture.kill_chrome()
-    time.sleep(1.0)
-    ok, err = capture.ensure()
-    if not ok:
-        print("Chrome 起不来:", err)
-        sys.exit(2)
+    # 夹具服务:把同一张图用 **http** 发出去。
+    # 设置页那条「从链接获取」走的是服务端 fetch,`data:` URL 到不了那里,
+    # 所以必须有一个真的 HTTP 端点 —— 但不能是写死的端口(见下面 ④ 的注释)。
+    import http.server
+    import socketserver
+    import threading
 
-    tab = capture.Tab(capture.DEFAULT_PORT, timeout=60)
+    class _H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            b = buf.getvalue()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(b)))
+            self.end_headers()
+            self.wfile.write(b)
+
+        def log_message(self, *a):
+            pass
+
+    class _S(socketserver.ThreadingTCPServer):   # ⚠️ 必须多线程,见 FACT
+        allow_reuse_address = True
+        daemon_threads = True
+
+    _srv = _S(("127.0.0.1", 0), _H)
+    fixture_base = "http://127.0.0.1:%d" % _srv.server_address[1]
+    threading.Thread(target=_srv.serve_forever, daemon=True).start()
+    print("夹具图 %s/bgtest.jpg\n" % fixture_base)
+
+    # ⚠️ 先**复用**已经开着的那个 Chrome —— 无条件 kill_chrome() 会把用户
+    #    正在用的采集浏览器杀掉再拉起(导入到一半会更糟),而我们只是要开一个标签页。
+    try:
+        tab = capture.Tab(capture.DEFAULT_PORT, timeout=60)
+    except Exception:
+        ok, err = capture.ensure()
+        if not ok:
+            print("Chrome 起不来:", err)
+            sys.exit(2)
+        tab = capture.Tab(capture.DEFAULT_PORT, timeout=60)
     try:
         tab.cmd("Emulation.setDeviceMetricsOverride",
                 {"width": W, "height": H, "deviceScaleFactor": 1,
@@ -152,12 +188,25 @@ if __name__ == "__main__":
 
         # ── ③ app 真的在用它吗 ─────────────────────────────────────
         print("\n③ app 自己的样式(不是夹具页面)")
-        tab.cmd("Page.navigate", {"url": "http://127.0.0.1:8611/"})
+        tab.cmd("Page.navigate", {"url": APP + "/"})
         for _ in range(40):
             time.sleep(0.5)
             if tab.evaluate("!!document.body"):
                 break
         time.sleep(2.0)
+        # ⚠️ 这一条原来**依赖这台机器碰巧设过背景** —— 它直接读 `has-bg`,
+        #    而没人在这个测试里设过。于是:用户机器上有背景 ⇒ 绿;
+        #    沙盒/新装的机器上没有 ⇒ 红。**红的原因和"背景功能好不好"无关**,
+        #    是"这台机器的环境不同"。(我在沙盒上跑就吃到了这条。)
+        #    ⇒ 夹具自己把背景设上,这条断言才是在测**产品**。
+        tab.evaluate("fetch('/api/bg/fromUrl',{method:'POST',"
+                     "headers:{'Content-Type':'application/json'},"
+                     "body:JSON.stringify({url:%s})})"
+                     % json.dumps(fixture_base + "/bgtest.jpg"))
+        for _ in range(30):
+            time.sleep(0.5)
+            if tab.evaluate("document.body.classList.contains('has-bg')"):
+                break
         cs = tab.evaluate("""(() => {
             const s = getComputedStyle(document.body, '::before');
             return JSON.stringify({size:s.backgroundSize, rep:s.backgroundRepeat,
@@ -187,12 +236,18 @@ if __name__ == "__main__":
                                 "!!document.querySelector('#bgPick')")))
 
         # 走一遍真流程:填链接 → 点「用这个链接」
+        # ⚠️⚠️ 这里原来写死的是 `http://127.0.0.1:8791/bgtest.jpg` —— 一个**开发时
+        #    临时起过的 HTTP 服务的端口**,而且它被提交进了仓库。
+        #    后果:这条断言在别人机器上**必然红**,而红的原因和"背景功能好不好"
+        #    毫无关系 —— 是那条链子指向一个根本不存在的服务器。
+        #    (我就是在沙盒上跑它时发现三条红的:端口碰巧也是 8791,但没人给
+        #     那个路径发图。)⇒ 夹具自己起服务,URL 从夹具来。
         tab.evaluate("""(() => {
             const i = document.querySelector('#bgUrl');
             i.value = %s;
             i.dispatchEvent(new Event('input',{bubbles:true}));
             document.querySelector('#bgGo').click();
-        })()""" % json.dumps("http://127.0.0.1:8791/bgtest.jpg"))
+        })()""" % json.dumps(fixture_base + "/bgtest.jpg"))
         prev = ""
         for _ in range(30):
             time.sleep(0.5)
