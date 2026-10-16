@@ -25,6 +25,17 @@ _JUNK = re.compile(
     r"checking your browser|cf-browser-verification|"
     r"please turn javascript on)", re.I)
 
+# 付费墙绕不过去时,**Bypass Paywalls Clean 自己会往页面里插一句**
+#   <div id="bpc_nofix">BPC > no fix …</div>
+# ⚠️ 这句话比我们能猜的任何东西都准 —— 它是**扩展自己下的结论**。
+#    2026-10-16 查 economist 时就是靠它在几分钟内定案的:页面正文字数 38,
+#    而整个 body 就是这一句。没有它,我们只能笼统地报
+#    「页面需要登录,或正文无法解析」—— 那句话把三种完全不同的情况
+#    (要登录 / 扩展绕不过 / 页面结构不认识)混成一句,用户没法据此做任何事。
+# ⚠️ 查的是**整篇** html,不是前 8000 字:`bpc_nofix` 是插在正文位置上的,
+#    付费墙页面往往前面塞了几百 KB 的脚本,前 8000 字里根本看不到它。
+_BPC_NOFIX = re.compile(r'id=["\']bpc_nofix["\']', re.I)
+
 
 _MD_LINK = re.compile(r"\[[^\]]*\]\(\s*(https?://[^\s)]+)\s*\)")
 _ANGLE = re.compile(r"<(https?://[^>\s]+)>")
@@ -239,7 +250,11 @@ def article_from_url(url, use_chrome=True, title_hint=None, timeout=60,
         n = sanitize.plain_len(body)
         if n < 60:
             why = "页面需要登录,或正文无法解析"
-            if _JUNK.search(html[:8000]):
+            # 顺序有讲究:**先问扩展**,因为它给的是**定论**;
+            # 反爬拦截和"要登录"都只是我们从页面长相上猜的。
+            if _BPC_NOFIX.search(html):
+                why = "这个网站的付费墙绕不过去(扩展报了 no fix)—— 换个来源,或先在这个网站上登录"
+            elif _JUNK.search(html[:8000]):
                 why = "被反爬拦截(试试开启 Chrome 渲染后重新获取)"
             return None, why
         art = {"title": title, "content": body, "text_len": n,

@@ -302,6 +302,10 @@ DEFAULT_SETTINGS = {
     # 导入
     "use_chrome": True,            # 用真实 Chrome(带 BPC 扩展/登录态)渲染取正文
     "chrome_port": 9222,
+    # 出国线路(见 netproxy.py)。空 = 自动探测;填地址 = 只用它;
+    # "off"/"none" = 强制直连。⚠️ **不要**在这里塞一个默认代理地址 ——
+    # 没有代理的人会被它拖垮,而那正是它默认该做的事。
+    "net_proxy": "",
     # 定时
     "schedule_enabled": True,
     "schedule_mode": "daily",      # daily | every2 | every3 | off

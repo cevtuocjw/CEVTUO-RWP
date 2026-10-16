@@ -20,10 +20,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     var server: Process?
     var weStartedServer = false
     var loading = true
+    var statusItem: NSStatusItem?
 
     // ---------------------------------------------------------------- 生命周期
     func applicationDidFinishLaunching(_ note: Notification) {
         buildMenu()
+        buildStatusItem()
         buildWindow()
         bringUpServer { [weak self] ok in
             guard let self = self else { return }
@@ -75,11 +77,90 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         edit.addItem(withTitle: "粘贴", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         edit.addItem(withTitle: "全选", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editItem.submenu = edit
+
+        // ⚠️⚠️ 菜单栏上那些**系统快捷键是靠主菜单里真的存在那一项**才有的。
+        //    以前这里只有「应用」和「编辑」两个菜单 —— 没有「窗口」菜单、
+        //    也就没有「最小化」这一项 ⇒ **⌘M 按下去什么都不发生**,
+        //    而且不报错、菜单里也找不到它(用户的原话:「能够 Command M 收回」)。
+        //    同理,⌘W / ⌘Q / ⌘H 之所以能用,是因为上面那几项真的存在。
+        //    ⇒ 要加什么快捷键,先加那一项,再谈绑定。
+        let winItem = NSMenuItem()
+        main.addItem(winItem)
+        let win = NSMenu(title: "窗口")
+        win.addItem(withTitle: "最小化",
+                    action: #selector(NSWindow.performMiniaturize(_:)),
+                    keyEquivalent: "m")
+        win.addItem(withTitle: "缩放",
+                    action: #selector(NSWindow.performZoom(_:)),
+                    keyEquivalent: "")
+        win.addItem(.separator())
+        win.addItem(withTitle: "把窗口放到最前",
+                    action: #selector(NSApplication.arrangeInFront(_:)),
+                    keyEquivalent: "")
+        winItem.submenu = win
+        // ⚠️ 还要把它登记成 NSApp.windowsMenu —— 这样 AppKit 自己会往里面
+        //    追加窗口列表、并把「最小化」和当前窗口接上(target 为 nil 时
+        //    走响应链,只有登记了才是确定的行为)。
+        NSApp.windowsMenu = win
+
         NSApp.mainMenu = main
     }
 
     @objc func openInBrowser() { NSWorkspace.shared.open(kBase) }
     @objc func reload() { webView.reload() }
+
+    // -------------------------------------------------------------- 菜单栏图标
+    func buildStatusItem() {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem = item
+
+        // 图标从 app 包里的 ui/ 取。⚠️ 两条路径都试:打包形态在 Resources/app,
+        // 开发期直接跑源码时在开发目录 —— 和 runtimeDir() 同一套判断。
+        var base: URL? = nil
+        if let dir = runtimeDir() {
+            let p = dir.appendingPathComponent("ui/statusbar.png")
+            if FileManager.default.fileExists(atPath: p.path) { base = dir.appendingPathComponent("ui") }
+        }
+        var img: NSImage? = nil
+        if let b = base {
+            img = NSImage(contentsOfFile: b.appendingPathComponent("statusbar.png").path)
+        }
+        if let img = img {
+            // ⚠️ isTemplate = 让系统按菜单栏主题(浅色/深色、选中态)自动反色。
+            //    不设的话这块银色 logo 在深色菜单栏上会糊成一团看不见的东西。
+            img.isTemplate = true
+            img.size = NSSize(width: 18, height: 18)
+            item.button?.image = img
+            item.button?.toolTip = kAppName
+        } else {
+            // ⚠️ 图没找到时**不能什么都不显示** —— 那样菜单栏上就是一片空白,
+            //    和「这个功能没做」长得一模一样。退回文字。
+            item.button?.title = "RWP"
+            item.button?.toolTip = kAppName + "(图标没找到,用的是文字)"
+        }
+
+        let menu = NSMenu()
+        menu.addItem(withTitle: "显示 \(kAppName)",
+                     action: #selector(showMainWindow), keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "在浏览器中打开",
+                     action: #selector(openInBrowser), keyEquivalent: "")
+        menu.addItem(withTitle: "重新载入", action: #selector(reload), keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "退出 \(kAppName)",
+                     action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
+        for it in menu.items where it.action != #selector(NSApplication.terminate(_:)) {
+            it.target = self
+        }
+        item.menu = menu
+    }
+
+    @objc func showMainWindow() {
+        NSApp.activate(ignoringOtherApps: true)
+        // 从菜单栏恢复时窗口可能是最小化的 —— 只 orderFront 的话它还在 Dock 里
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.makeKeyAndOrderFront(nil)
+    }
 
     // ------------------------------------------------------------------ 窗口
     func buildWindow() {

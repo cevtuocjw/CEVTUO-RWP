@@ -495,7 +495,14 @@ const I18N = {
     "nav.collections":"CEVTUO合集坊","nav.rss":"Rssdailyepub",
     "nav.library":"书库","nav.settings":"设置",
     "common.ok":"确定","common.close":"关闭","common.save":"保存","common.cancel":"取消",
-    "common.working":"处理中…","common.viewFail":"这一屏打不开:",
+    "common.working":"处理中…","common.viewFail":"这一屏打不开:","common.loading":"读取中…",
+    "set.net":"出国线路","set.netNow":"现在走哪条线",
+    "set.netNote":"ft.com、economist 这类站点在国内必须走代理才能打开。留空 = 自动探测(常见的本地代理端口);填地址 = 只用它;点「直连」= 都不用。",
+    "set.netPh":"http://127.0.0.1:7890(留空 = 自动)",
+    "set.netAuto":"自动探测","set.netOff":"直连",
+    "set.netHint":"⚠️ 探测到的结果会同时用在两处:抓取用的 Python,和渲染正文用的浏览器。两个都改了才会生效。",
+    "set.netOn":"走代理","set.netOffTag":"直连(你手动关掉的)","set.netNone":"直连(没检测到可用代理)",
+    "set.netApplied":"已换成:","set.netNotApplied":"这个地址连不上,已退回直连 —— 请检查端口",
     "common.delete":"删除","common.edit":"编辑","common.open":"打开","common.reveal":"在访达显示",
     "ch.refetch":"再次获取","ch.refetching":"获取中…","ch.refetchOk":"已重新获取,共 {n} 字",
     "ch.refetchFail":"重新获取失败:","ch.up":"上移","ch.down":"下移",
@@ -615,7 +622,14 @@ const I18N = {
     "nav.collections":"CEVTUO Studio","nav.rss":"Rssdailyepub",
     "nav.library":"Library","nav.settings":"Settings",
     "common.ok":"OK","common.close":"Close","common.save":"Save","common.cancel":"Cancel",
-    "common.working":"Working…","common.viewFail":"Cannot open this screen:",
+    "common.working":"Working…","common.viewFail":"Cannot open this screen:","common.loading":"Loading…",
+    "set.net":"Outbound route","set.netNow":"Current route",
+    "set.netNote":"Sites like ft.com and economist.com need a proxy here. Empty = auto-detect (common local proxy ports); an address = use only that; Direct = use none.",
+    "set.netPh":"http://127.0.0.1:7890 (empty = auto)",
+    "set.netAuto":"Auto-detect","set.netOff":"Direct",
+    "set.netHint":"⚠️ The detected route is applied in two places: the Python fetcher and the browser used to render pages. Both must change for this to work.",
+    "set.netOn":"Proxy","set.netOffTag":"Direct (you turned it off)","set.netNone":"Direct (no usable proxy found)",
+    "set.netApplied":"Now using:","set.netNotApplied":"That address is unreachable — reverted to direct. Check the port.",
     "common.delete":"Delete","common.edit":"Edit","common.open":"Open","common.reveal":"Reveal in Finder",
     "ch.refetch":"Refetch","ch.refetching":"Fetching…","ch.refetchOk":"Refetched — {n} chars",
     "ch.refetchFail":"Refetch failed: ","ch.up":"Move up","ch.down":"Move down",
@@ -1728,6 +1742,22 @@ async function renderSettings(){
     </div>
 
     <div class="card glass">
+      <h3>${t('set.net')}</h3>
+      <p class="muted">${t('set.netNote')}</p>
+      <div class="kv">
+        <b>${t('set.netNow')}</b><span id="netNow">${t('common.loading')}</span>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <input type="text" id="netProxy" style="max-width:330px"
+               placeholder="${t('set.netPh')}" value="${esc(s.settings.net_proxy||'')}"/>
+        <button class="btn primary" id="netSave">${t('common.save')}</button>
+        <button class="btn" id="netAuto">${t('set.netAuto')}</button>
+        <button class="btn" id="netOff">${t('set.netOff')}</button>
+      </div>
+      <p class="muted" style="margin-top:8px;font-size:12px">${t('set.netHint')}</p>
+    </div>
+
+    <div class="card glass">
       <h3>${t('set.browser')}</h3>
       <p class="muted">${t('set.browserNote')}</p>
       <div class="kv">
@@ -1834,6 +1864,34 @@ async function renderSettings(){
   $('#cTest').onclick = async ()=>{ const u=prompt('URL','https://example.com'); if(!u) return;
     const r = await post('/api/capture/test',{url:u});
     alert(r.ok? (r.len+' chars\n'+r.title) : r.err); };
+
+  // ---- 出国线路 ----
+  // ⚠️ 三种状态**必须长得不一样**:走代理 / 没检测到 / 你自己关的。
+  //    只回一个 bool 的话,用户分不清"这里没有代理"和"被关掉了" ——
+  //    而这两种该做的事完全不同。
+  async function paintNet(force){
+    try{
+      const n = await get('/api/net/proxy' + (force?'?redetect=1':''));
+      const el = $('#netNow'); if(!el) return;
+      if(n.proxy) el.innerHTML = `<span class="tag ok">${t('set.netOn')}</span> <code>${esc(n.proxy)}</code>`;
+      else if(n.mode === 'off') el.innerHTML = `<span class="tag warn">${t('set.netOffTag')}</span>`;
+      else el.innerHTML = `<span class="tag warn">${t('set.netNone')}</span>`;
+    }catch(e){ const el=$('#netNow'); if(el) el.textContent = '—'; }
+  }
+  async function saveNet(v){
+    try{
+      const r = await post('/api/net/proxy',{proxy:v});
+      await paintNet(true);
+      // ⚠️ 用户必须知道**保存之后到底生效没有** —— 填了个连不上的地址时,
+      //    它会安静地退回直连,而"没生效"和"生效了但网站还是不通"长得一样。
+      toast(r.applied ? (t('set.netApplied')+' '+r.proxy) : t('set.netNotApplied'));
+      renderSettings();
+    }catch(e){ toast(String(e.message||e)); }
+  }
+  $('#netSave').onclick = ()=>saveNet($('#netProxy').value.trim());
+  $('#netAuto').onclick = ()=>saveNet('');
+  $('#netOff').onclick  = ()=>saveNet('off');
+  paintNet(false);
 }
 
 /* 文件夹选择器 */

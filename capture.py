@@ -560,6 +560,25 @@ def launch(port=DEFAULT_PORT, headless=True):
             args.append("--load-extension=" + str(_p))
         _log(f"显式加载未打包扩展 {len(unpacked)} 个: "
              + ", ".join(Path(p).name for p in unpacked))
+    # ⭐ 出国线路。⚠️⚠️ 这一条以前**根本不存在**,而它正是
+    #    「ft.com / economist 全都处理不了」的一半原因:
+    #    Chrome 读的是**系统代理设置**,而 macOS 那边的 HTTPEnable/HTTPSEnable
+    #    是 0(Clash 在跑但没设系统代理)⇒ Chrome 裸连 ⇒ 浏览器错误页。
+    #    Python 那半边同时也在裸连(见 netproxy.py)—— **两条腿一起断**,
+    #    于是看起来像"这个网站坏了"。
+    # ⚠️ 不要再加 `--proxy-bypass-list=<-loopback>`:Chrome 默认就绕过回环,
+    #    给了 `<-loopback>` 反而会让它拿代理去连 127.0.0.1:9222(CDP),
+    #    把整条自动化链路弄断。
+    try:
+        import netproxy
+        _px = netproxy.chrome_flag()
+        if _px:
+            args.append("--proxy-server=" + _px)
+            _log(f"浏览器走代理 {_px}")
+        else:
+            _log("浏览器直连(没检测到可用代理)")
+    except Exception as _e:
+        _log(f"代理探测失败,浏览器按直连走:{_e}")
     args.append("about:blank")
     subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     # ⚠️ 给 90 秒。原来只等 20 秒 —— 首次同步完 profile 之后 Chrome 要建索引、

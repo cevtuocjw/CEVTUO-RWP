@@ -36,6 +36,7 @@ import export_epub      # noqa: E402
 import extract_page     # noqa: E402
 import imports          # noqa: E402
 import jobs             # noqa: E402
+import netproxy         # noqa: E402
 import opml             # noqa: E402
 import scheduler        # noqa: E402
 import store            # noqa: E402
@@ -50,7 +51,7 @@ PORT = 8611
 # ⚠️ 以前设置页那行「版本」显示的是 capture.status()["version"],那是 **Chrome 的版本**,
 # 不是本软件的。label 写的确实是「浏览器版本」,但用户看到的就一个版本号,
 # 会当成软件版本 —— 加这一行区分开。
-APP_VERSION = "1.6"
+APP_VERSION = "1.7"
 
 # ⚠️ 这个名字不能叫 log —— 下面几行就有一个 def log(*a)。
 # 叫 log 的话会被那个函数覆盖,而 AttributeError 出现在两个很难查的地方:
@@ -66,6 +67,28 @@ try:
     _fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     slog.addHandler(_fh)
     slog.setLevel(logging.INFO)
+except Exception:
+    pass
+
+# ⚠️⚠️ 别的模块(`capture` / `imports` / `export_epub` / `scheduler` …)全都用
+#     `logging.getLogger("xxx").info(...)` 记日志,而**没有任何 handler** ——
+#     Python 的兜底 handler 只管 WARNING 以上,于是那些 INFO **全被丢掉了**。
+#     后果非常具体:`capture` 里最要紧的几句("显式加载未打包扩展 N 个"、
+#     "loadUnpacked 返回 id"、"浏览器走代理 …")**一直是不可见的**,
+#     而它们正是付费墙/抓取出问题时唯一能看的线索。
+#     (2026-10-16 就是靠"日志里应该有那一行却没有"发现这条的 ——
+#      而那行之所以没有,不是因为它没执行,是因为它压根没被写下来。)
+# ⇒ 给**根 logger** 挂一个 handler,一次覆盖所有模块。
+# ⚠️ 写单独一个文件,不和启动脚本重定向的 server.log 抢同一个 fd。
+try:
+    _root = logging.getLogger()
+    if not any(getattr(h, "_cevtuo", False) for h in _root.handlers):
+        _ah = logging.FileHandler(BASE / "logs" / "app.log", encoding="utf-8")
+        _ah.setFormatter(logging.Formatter(
+            "%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        _ah._cevtuo = True
+        _root.addHandler(_ah)
+        _root.setLevel(logging.INFO)
 except Exception:
     pass
 
@@ -780,6 +803,11 @@ class Handler(BaseHTTPRequestHandler):
                 json_resp(self, {"lines": tail(BASE / "logs" / f"{which}.log", n)})
             elif r == "/api/capture/status":
                 json_resp(self, capture.status())
+            elif r == "/api/net/proxy":
+                # ⚠️ `redetect=1` 才重新探测 —— 探测要发真实请求(约 1 秒),
+                #    而这个页面每几秒刷一次,不能每次都探。
+                json_resp(self, netproxy.status(
+                    force=qs.get("redetect", ["0"])[0] == "1"))
             elif r == "/api/fs/list":
                 json_resp(self, self._fs_list(qs.get("path", ["~"])[0]))
             elif r == "/api/open":
@@ -934,6 +962,15 @@ class Handler(BaseHTTPRequestHandler):
         if r == "/api/collection/create":
             return store.create_collection(b.get("title"), b.get("author"),
                                            b.get("language_code") or "zh-CN")
+        if r == "/api/net/proxy":
+            v = (b.get("proxy") or "").strip()
+            store.set_settings({"net_proxy": v})
+            netproxy.set_override(v)
+            p = netproxy.apply_env(force=True)
+            # 改了线路要告诉调用方「现在到底走没走」——不然用户点了保存,
+            # 界面还是旧状态,而他会以为没生效。
+            return {"ok": True, "applied": bool(p), "proxy": p,
+                    "status": netproxy.status()}
         if r == "/api/collection/save":
             return store.update_collection(
                 b["id"], title=b.get("title"), author=b.get("author"),
@@ -1605,6 +1642,17 @@ def main():
     ap.add_argument("--port", type=int, default=PORT)
     ap.add_argument("--open", action="store_true")
     args = ap.parse_args()
+
+    # ⭐ 出国线路:探测一次,把结果写进**进程环境**,于是所有 requests 调用
+    # (一行都不用改,它们默认 trust_env)和 Chrome 都跟着走。
+    # ⚠️ 必须在任何抓取之前 —— 用户报的「ft.com / economist 全都处理不了」
+    #    就是因为 GUI app 继承不到 shell 里的代理变量,一直在裸连。
+    try:
+        netproxy.set_override((store.get_settings() or {}).get("net_proxy"))
+        p = netproxy.apply_env()
+        log("出国线路:" + (("走 " + p) if p else "直连(没检测到可用代理)"))
+    except Exception as e:
+        log("出国线路探测失败(按直连走):%s" % e)
 
     url = f"http://127.0.0.1:{args.port}"
     try:
