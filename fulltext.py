@@ -272,6 +272,29 @@ def _try_browser(url, timeout, cfg):
         return None
 
 
+READER_URL = "https://translate.yandex.com/translate?url={u}&lang={lang}"
+
+
+def _try_reader(url, timeout):
+    """阅读器代理(网页翻译服务)兜底。
+
+    ⚠️ 只在本机所有抓取方式都没拿到全文时才调用。NYT 这类站点的
+    反爬判定在**出口 IP** 上,换 UA / headless 都没用;阅读器是它自己的
+    服务器去抓,所以能过。详见 imports.reader_get 的注释。
+    """
+    import requests
+    from urllib.parse import quote
+    try:
+        r = requests.get(READER_URL.format(u=quote(url, safe=""), lang="en"),
+                         headers=_ALT_UAS[0], timeout=min(timeout, 45))
+        if "html" not in (r.headers.get("Content-Type") or "").lower():
+            return None
+        return _extract(r.text)
+    except Exception as e:
+        log.debug("reader 失败 %s: %s", url, e)
+        return None
+
+
 def _try_ext(url, cmd):
     """外接命令:stdout 返回 HTML/纯文本正文。cmd 是 argv 列表。"""
     if not cmd:
@@ -352,6 +375,15 @@ def get_body(url, summary_html, feed_has_full, cfg, timeout,
         if n >= MIN_FULL and (summ_plain == 0 or n >= summ_plain + 150):
             if best is None or n > best[0]:
                 best = (n, mode, body, detail)
+    if not best:
+        # 所有本机路径都没拿到全文 → 阅读器代理最后试一次。
+        # ⚠️ 放在最后而不是候选之一:它要发一次跨站请求,有全文的站点不该多付这笔时间。
+        b = _try_reader(url, timeout)
+        if b:
+            n = _plain_len(b)
+            if n >= MIN_FULL and (summ_plain == 0 or n >= summ_plain + 150):
+                best = (n, "reader", b, "阅读器代理")
+
     if best:
         _, mode, body, detail = best
         return body, mode, detail

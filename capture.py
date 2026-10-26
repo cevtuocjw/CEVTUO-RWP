@@ -229,6 +229,7 @@ def profile_copied():
 
 
 def status(port=DEFAULT_PORT):
+    exts = extension_inventory()          # 20 秒缓存;界面每 3 秒拉一次
     return {
         "port": port,
         "browser": BROWSER_NAME,
@@ -238,7 +239,10 @@ def status(port=DEFAULT_PORT):
         "profile_dir": str(COPY_PROFILE),
         "real_profile": str(REAL_PROFILE),
         "version": (browser_version(port) or {}).get("Browser"),
-        "unpacked": unpacked_extension_paths(),
+        "unpacked": [x["path"] for x in exts],
+        # UI 用它在设置页显示「实际加载的付费墙插件是哪一版」
+        "extensions": exts,
+        "extensions_dir": str(BASE / "extensions"),
         "sync": _sync_state,
         "chrome_exists": Path(CHROME).exists(),
         "profile_exists": profile_ok(REAL_PROFILE),
@@ -290,54 +294,6 @@ def refresh_profile():
 
 
 # ------------------------------------------------------------- 启动 Chrome ---
-def unpacked_extension_paths():
-    """从副本的 Secure Preferences 里找出所有「开发者模式加载」的扩展路径。
-
-    为什么必须这么做:未打包扩展(MV3、如 Bypass Paywalls Clean)的权限授予记录
-    存在 Secure Preferences 的 MAC 保护块里,复制到新 profile 后往往不再被认账
-    —— 结果就是扩展加载了但 host 权限为空,declarativeNetRequest 规则一条都不生效,
-    付费墙页面依然拿不到全文。用 --load-extension 显式加载时,Chrome 会按 manifest
-    声明的 host_permissions 直接授权,绕开这个问题。
-    """
-    import json as _json
-    out = []
-    for name in ("Secure Preferences", "Preferences"):
-        p = COPY_PROFILE / "Default" / name
-        if not p.exists():
-            continue
-        try:
-            d = _json.loads(p.read_text(encoding="utf-8", errors="ignore"))
-        except Exception:
-            continue
-        for eid, s in (d.get("extensions", {}).get("settings", {}) or {}).items():
-            if s.get("location") != 4:          # 4 = LOAD_UNPACKED
-                continue
-            path = s.get("path")
-            if path and Path(path).exists() and path not in out:
-                out.append(path)
-    if out:
-        return out
-
-    # ⚠️⚠️ 兜底:profile 里查不到就**去磁盘上找**。
-    #
-    # 这一段是必须的,因为这里是**先有鸡还是先有蛋**:
-    # 扩展路径本来就只记在 profile 的 Preferences 里,而那个文件会被
-    # sync_profile() 的 rsync 冲掉(真实 Chrome 的 Preferences 里当然没有
-    # --load-extension 的记录)。记录一没,这里就永远返回空 ⇒ 扩展永远不加载
-    # ⇒ **付费墙静默失效** —— 页面照常打开,只是拿到的永远是预览版,
-    # 而且全程没有任何报错。
-    #
-    # 找不到的时候要**喊出来**。用户看到「没找到扩展」比拿到半篇正文强。
-    for d in _discover_extensions():
-        out.append(str(_adopt_extension(d)))
-    if out:
-        _log(f"profile 里没有未打包扩展记录,改从磁盘找到 {len(out)} 个: "
-             + ", ".join(Path(p).name for p in out))
-    else:
-        _log("⚠️ 一个未打包扩展都没找到 —— 遇到付费墙的页面会只拿到预览版正文")
-    return out
-
-
 # 兜底搜索的位置。➊ 是我们自己的副本(找到一次之后就都从这拿,最稳)
 _EXT_SEARCH = (
     BASE / "extensions",
@@ -349,26 +305,70 @@ _EXT_SEARCH = (
 _EXT_HINT = re.compile(r"paywall|bypass|clean|unlock", re.I)
 
 
-def _looks_like_ext(d):
-    """目录是不是一个 Chrome 扩展。
-
-    判据是 manifest.json 里**既有 manifest_version 又有实际声明**
-    —— 只判"有没有 manifest.json"会把一堆无关目录(比如某些前端项目)也捞进来。
-    """
+def _manifest_info(d):
+    """读一个目录的扩展身份;不是扩展就返回 None。"""
     import json as _json
+    d = Path(d)
     try:
         m = _json.loads((d / "manifest.json").read_text(encoding="utf-8",
                                                        errors="ignore"))
     except Exception:
-        return False
+        return None
     if "manifest_version" not in m:
-        return False
-    return bool(m.get("declarative_net_request") or m.get("content_scripts")
-                or m.get("host_permissions") or m.get("permissions"))
+        return None
+    # 判据是 manifest 里**既有 manifest_version 又有实际声明**
+    # —— 只判"有没有 manifest.json"会把一堆无关目录(比如某些前端项目)也捞进来。
+    if not (m.get("declarative_net_request") or m.get("content_scripts")
+            or m.get("host_permissions") or m.get("permissions")):
+        return None
+    return {"path": d, "name": str(m.get("name") or d.name),
+            "version": str(m.get("version") or "0")}
+
+
+def _ver_key(v):
+    """把 4.4.7.6 这种版本号变成可比较的元组。"""
+    parts = re.findall(r"\d+", str(v or ""))
+    return tuple(int(x) for x in parts) or (0,)
+
+
+def _profile_extension_dirs(profile_root):
+    """从某个 Chrome profile 里读「开发者模式加载」的扩展路径。
+
+    ⚠️⚠️ 必须**先读真正在用的 profile**(REAL_PROFILE),再读副本。
+    这是 2026-10-26 用户报「Chrome 里已经换成新版付费墙插件,RWP 还是拿到
+    unlimited 预览」的根因:sync_profile() 只在第一次复制,copy 里的
+    Secure Preferences 一直停在旧记录(指向旧目录),而启动 Chrome 用的是
+    这份旧记录 ⇒ 加载的永远是旧版扩展,并且**没有任何报错**。
+    """
+    import json as _json
+    root = Path(profile_root)
+    out = []
+    profs = [root / "Default"]
+    try:
+        profs += sorted(p for p in root.glob("Profile *") if p.is_dir())
+    except Exception:
+        pass
+    for prof in profs:
+        for name in ("Secure Preferences", "Preferences"):
+            p = prof / name
+            if not p.exists():
+                continue
+            try:
+                d = _json.loads(p.read_text(encoding="utf-8", errors="ignore"))
+            except Exception:
+                continue
+            for _eid, s in (d.get("extensions", {}).get("settings", {})
+                            or {}).items():
+                if s.get("location") != 4:      # 4 = LOAD_UNPACKED
+                    continue
+                path = s.get("path")
+                if path:
+                    out.append(Path(path))
+    return out
 
 
 def _discover_extensions():
-    import json as _json
+    """磁盘兜底搜索。会往下走两层 —— 用户的插件经常放在 Downloads/Folders/xxx。"""
     found = []
     for root in _EXT_SEARCH:
         if not root.is_dir():
@@ -380,33 +380,135 @@ def _discover_extensions():
             cands += [d for d in root.iterdir()
                       if d.is_dir() and (d / "manifest.json").exists()]
         except Exception:
-            continue
+            cands = []
+        # 再往下找一层(Downloads/Folders/bypass-paywalls-…)
+        for d in list(cands):
+            try:
+                cands += [x for x in d.iterdir()
+                          if x.is_dir() and (x / "manifest.json").exists()]
+            except Exception:
+                pass
         for d in cands:
-            if _looks_like_ext(d) and d not in found:
+            if _manifest_info(d) and d not in found:
                 found.append(d)
     found.sort(key=lambda d: 0 if _EXT_HINT.search(d.name) else 1)
     return found
 
 
 def _adopt_extension(src):
-    """把这个扩展**复制进数据目录**,以后不再依赖它原来在哪。
+    """把扩展**复制进数据目录**,并在版本变化时更新副本。
 
-    ⚠️ 用户可能某天把 Downloads 里的那个文件夹删了/挪了/重命名了,
-    那时扩展又会失效。收进我们自己的目录就一劳永逸。
+    ⚠️ 不能无条件 rmtree + copytree:
+      · src 本来就是 BASE/extensions 里的那一份时,等于把自己删了再复制;
+      · 每次 /api/state 轮询都复制一遍几十 MB 的扩展,界面会卡。
+    ⇒ 先比版本,已经一样就直接用。
     """
     import shutil
+    src = Path(src)
     dst_root = BASE / "extensions"
     dst = dst_root / src.name
     try:
+        if src.resolve() == dst.resolve():
+            return dst
+    except Exception:
+        pass
+    si, di = _manifest_info(src), _manifest_info(dst)
+    if di and si and di["name"] == si["name"] and \
+            _ver_key(di["version"]) >= _ver_key(si["version"]):
+        return dst
+    try:
         dst_root.mkdir(parents=True, exist_ok=True)
+        tmp = dst_root / (dst.name + ".new")
+        if tmp.exists():
+            shutil.rmtree(tmp, ignore_errors=True)
+        shutil.copytree(src, tmp)
         if dst.exists():
             shutil.rmtree(dst, ignore_errors=True)
-        shutil.copytree(src, dst)
-        _log(f"已把扩展「{src.name}」收进 {dst_root}(以后不依赖原位置)")
+        tmp.rename(dst)
+        if di:
+            _log(f"扩展「{si['name']}」已更新 {di['version']} → {si['version']}"
+                 f"(收进 {dst_root},以后不依赖原位置)")
+        else:
+            _log(f"已把扩展「{src.name}」{si['version'] if si else ''} 收进 "
+                 f"{dst_root}(以后不依赖原位置)")
         return dst
     except Exception as e:
         _log(f"复制扩展失败,继续用原位置 {src}: {e}")
         return src
+
+
+_inv_cache = (0.0, [])
+_INV_TTL = 20.0
+
+
+def extension_inventory(force=False):
+    """当前**真正会加载**的扩展清单(同名只留最高版本)。
+
+    返回 [{name, version, path}]。UI 拿它显示「付费墙插件 4.4.7.6」,
+    用户一眼就能确认「我换的那版到底被认了没有」——以前这件事完全不可见。
+
+    ⚠️ 缓存 20 秒:界面每 3 秒拉一次 /api/state,而这个函数要扫磁盘。
+    不缓存的话光是打开界面就在反复遍历 Downloads。
+    """
+    global _inv_cache
+    if not force and time.time() - _inv_cache[0] < _INV_TTL:
+        return [dict(x) for x in _inv_cache[1]]
+    cands = []
+    for prof in (REAL_PROFILE, COPY_PROFILE):
+        cands += _profile_extension_dirs(prof)
+    cands += _discover_extensions()
+    best = {}
+    seen = set()
+    for d in cands:
+        d = Path(d)
+        try:
+            key = str(d.resolve())
+        except Exception:
+            key = str(d)
+        if key in seen:
+            continue
+        seen.add(key)
+        info = _manifest_info(d)
+        if not info:
+            continue
+        name = info["name"]
+        cur = best.get(name)
+        if cur is None or _ver_key(info["version"]) > _ver_key(cur["version"]):
+            best[name] = info
+    out = []
+    for info in sorted(best.values(), key=lambda x: x["name"].lower()):
+        src = info["path"]
+        dst = _adopt_extension(src)
+        out.append({"name": info["name"], "version": info["version"],
+                    "path": str(dst)})
+    _inv_cache = (time.time(), [dict(x) for x in out])
+    return out
+
+
+def unpacked_extension_paths(force=False):
+    """要交给 Chrome 的 `--load-extension` 路径。
+
+    为什么必须显式加载:未打包扩展(MV3、如 Bypass Paywalls Clean)的权限授予
+    记录存在 Secure Preferences 的 MAC 保护块里,复制到新 profile 后往往
+    不再被认账 —— 结果就是扩展加载了但 host 权限为空,DNR 规则一条都不生效,
+    付费墙页面依然拿不到全文。用 --load-extension 显式加载时,Chrome 会按
+    manifest 声明的 host_permissions 直接授权,绕开这个问题。
+    """
+    inv = extension_inventory(force=force)
+    out = [x["path"] for x in inv]
+    if out:
+        _log("加载扩展:" + ", ".join(
+            f"{x['name']} {x['version']}" for x in inv))
+    else:
+        # 找不到的时候要**喊出来**。用户看到「没找到扩展」比拿到半篇正文强。
+        _log("⚠️ 一个未打包扩展都没找到 —— 遇到付费墙的页面会只拿到预览版正文")
+    return out
+
+
+def extension_fingerprint(force=False):
+    """版本指纹 —— 变了就说明用户在 Chrome 里换了插件,需要重启自动化浏览器。"""
+    return "|".join(f"{x['name']}@{x['version']}"
+                    for x in extension_inventory(force=force))
 
 
 # 一个正常的桌面 Chrome UA。⚠️ headless 默认的 UA 里带 `HeadlessChrome`,
@@ -599,8 +701,9 @@ def kill_chrome():
     关掉之后必须让 _ext_done 复位 —— 下次起浏览器要重新走一遍
     Extensions.loadUnpacked,否则扩展会"加载了但没权限"。
     """
-    global _ext_done
+    global _ext_done, _loaded_ext_fp
     _ext_done = False
+    _loaded_ext_fp = ""
     if IS_WIN:
         ps = ("Get-CimInstance Win32_Process | "
               "Where-Object { $_.CommandLine -like "
@@ -698,11 +801,21 @@ def load_unpacked_via_cdp(port=DEFAULT_PORT):
 
 
 _ext_done = False
+_loaded_ext_fp = ""
 
 
 def ensure(port=DEFAULT_PORT):
     """确保浏览器可用,并且**未打包扩展已经真正拿到权限**。"""
-    global _ext_done
+    global _ext_done, _loaded_ext_fp
+    fp = extension_fingerprint(force=True)
+    # ⚠️⚠️ 用户在 Chrome 里换了付费墙插件之后,app 里的自动化 Chrome 还是
+    #    上次启动时加载的那一版 —— 不重启就永远用旧的,而且没有任何提示。
+    #    每次开始导入前比一次版本指纹,变了就重启浏览器。
+    if port_alive(port) and fp != _loaded_ext_fp:
+        _log(f"扩展版本有变化({_loaded_ext_fp or '未知'} → {fp or '无'}),"
+             "重启自动化浏览器")
+        kill_chrome()
+        _ext_done = False
     if not port_alive(port):
         ok, err = launch(port)
         if not ok:
@@ -722,6 +835,7 @@ def ensure(port=DEFAULT_PORT):
             # 所以「第一次导入总是不全、再点一次就好了」就是这个空窗。
             time.sleep(3.0)
         _ext_done = True
+        _loaded_ext_fp = fp
     return True, ""
 
 

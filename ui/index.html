@@ -506,6 +506,10 @@ const I18N = {
     "common.delete":"删除","common.edit":"编辑","common.open":"打开","common.reveal":"在访达显示",
     "ch.refetch":"再次获取","ch.refetching":"获取中…","ch.refetchOk":"已重新获取,共 {n} 字",
     "ch.refetchFail":"重新获取失败:","ch.up":"上移","ch.down":"下移",
+    "ch.retryFailed":"重新获取没抓好的 ({n})","ch.retryNone":"没有需要重新获取的章节",
+    "ch.retryTitle":"重新获取没抓好的章节",
+    "ch.retryDone":"完成:成功 {ok} 章,失败 {bad} 章",
+    "ch.retrying":"正在重新获取…",
     "lib.delBook":"删除这本书",
     "lib.delGroup":"清空这一组",
     "lib.delGroupConfirm":"删除《{name}》里的 {n} 本书?\n\n只删生成出来的电子书,合集和里面的文章都保留,随时可以重新导出。",
@@ -561,6 +565,7 @@ const I18N = {
     "imp.mdHint":"粘贴 Markdown(用 # 一级标题 分篇,每篇成为一个章节)",
     "imp.rssFull":"RSS 自带全文",
     "exp.title":"导出 EPUB","exp.embed":"下载并内嵌图片(Kindle 离线可读)",
+    "exp.options":"导出选项…","exp.starting":"正在做书,图片会在正文写完之后再下…",
     "exp.noPreface":"不生成前言 / 目录页","exp.start":"开始导出",
     "exp.note":"导出后可在书库里找到。本程序对导出页数没有限制。",
     "rss.gen":"一键生成","rss.recent":"收录最近","rss.days":"天","rss.perFeed":"每源最多",
@@ -592,6 +597,11 @@ const I18N = {
     "set.ready":"已就绪","set.notReady":"尚未复制","set.connected":"已连接","set.disconnected":"未启动",
     "set.startChrome":"启动 / 连接 Chrome","set.sync":"重新同步登录态","set.test":"测试渲染一个网址",
     "set.syncNote":"复制过去的登录态是一份快照。若某站提示未登录,点「重新同步登录态」。",
+    "set.ext":"付费墙插件","set.extNone":"没找到(付费墙页面只能拿到预览)",
+    "set.extNote":"RWP 会自动读取你 Chrome 里实际加载的那一版,同名只留最新的。在 Chrome 里更新插件后,点一次「重新读取插件」即可,不用把文件夹复制来复制去。",
+    "set.extSync":"重新读取插件","set.extSyncing":"正在读取 Chrome 里的插件…",
+    "set.extOk":"已读取:","set.extBad":"读取失败:",
+    "set.extDir":"插件缓存目录",
     "set.library":"书库位置","set.libraryNote":"所有生成的书(RSS 日报与合集导出)都放在这里。改位置时,已生成的书会自动一起搬过去。",
     "set.pick":"选择文件夹","set.currentFmt":"当前","set.pathManual":"也可以直接输入路径",
     "set.moved":"已移动 {n} 项","set.appearance":"外观","set.theme":"主题",
@@ -633,6 +643,10 @@ const I18N = {
     "common.delete":"Delete","common.edit":"Edit","common.open":"Open","common.reveal":"Reveal in Finder",
     "ch.refetch":"Refetch","ch.refetching":"Fetching…","ch.refetchOk":"Refetched — {n} chars",
     "ch.refetchFail":"Refetch failed: ","ch.up":"Move up","ch.down":"Move down",
+    "ch.retryFailed":"Refetch the failed ones ({n})","ch.retryNone":"Nothing to refetch",
+    "ch.retryTitle":"Refetching the failed chapters",
+    "ch.retryDone":"Done — {ok} fixed, {bad} still failing",
+    "ch.retrying":"Refetching…",
     "lib.delBook":"Delete book",
     "lib.delGroup":"Empty this group",
     "lib.delGroupConfirm":"Delete the {n} books in “{name}”?\n\nOnly the generated EPUBs are removed — the collection and its articles stay, so you can export again anytime.",
@@ -689,6 +703,7 @@ const I18N = {
     "imp.mdHint":"Paste Markdown (split articles with # H1 headings)",
     "imp.rssFull":"full text in feed",
     "exp.title":"Export EPUB","exp.embed":"Download and embed images (offline reading on Kindle)",
+    "exp.options":"Export options…","exp.starting":"Building the book — images download after all the text is in…",
     "exp.noPreface":"Skip preface / TOC page","exp.start":"Export",
     "exp.note":"Exported books appear in the Library. There is no page limit.",
     "rss.gen":"One-click build","rss.recent":"Include last","rss.days":"days","rss.perFeed":"Max per feed",
@@ -720,6 +735,11 @@ const I18N = {
     "set.ready":"ready","set.notReady":"not copied","set.connected":"connected","set.disconnected":"not running",
     "set.startChrome":"Start / connect Chrome","set.sync":"Re-sync session","set.test":"Test render a URL",
     "set.syncNote":"The copied session is a snapshot. If a site asks you to log in, click Re-sync session.",
+    "set.ext":"Paywall extension","set.extNone":"Not found (paywalled pages will only give a preview)",
+    "set.extNote":"RWP reads whichever version your Chrome actually loads; if several copies exist, the newest wins. After updating the extension in Chrome, click “Reload extension once” — no need to copy folders around.",
+    "set.extSync":"Reload extension once","set.extSyncing":"Reading the extension from Chrome…",
+    "set.extOk":"Loaded: ","set.extBad":"Could not read: ",
+    "set.extDir":"Extension cache",
     "set.library":"Library location","set.libraryNote":"All generated books (RSS dailies and collection exports) live here. Changing it moves existing books along.",
     "set.pick":"Choose folder","set.currentFmt":"Current","set.pathManual":"Or type a path",
     "set.moved":"Moved {n} item(s)","set.appearance":"Appearance","set.theme":"Theme",
@@ -808,12 +828,15 @@ function applyGlass(v){ document.documentElement.style.setProperty('--glass', St
    **每 3 秒重新加载一次背景图**,图一直在闪。 */
 let _bgKey = null;
 function applyBg(has, key){
-  const k = has ? String(key == null ? 'x' : key) : '';
+  // ⚠️ 没有自定义背景时不再落回纯渐变 —— /api/bg 会发**自带壁纸**
+  //    (ui/default-bg.jpg,用户 2026-10-26 指定的那张图)。
+  //    所以这里的 `has` 只决定用哪个 key,永远给 --bgimg 一个 URL。
+  const k = has ? String(key == null ? 'x' : key) : 'default';
   if(k === _bgKey) return;
   _bgKey = k;
-  document.body.classList.toggle('has-bg', !!has);
+  document.body.classList.add('has-bg');
   document.documentElement.style.setProperty(
-    '--bgimg', has ? `url('/api/bg?m=${encodeURIComponent(key == null ? 'x' : key)}')` : 'none');
+    '--bgimg', `url('/api/bg?m=${encodeURIComponent(k)}')`);
 }
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', ()=>{ if(S.ui.theme==='auto') applyTheme(); });
 
@@ -947,6 +970,7 @@ async function renderCollection(cid){
             <button class="btn" id="findCover"><svg class="ico"><use href="#i-image"/></svg><span>${t('cov.search')}</span></button>
             <button class="btn primary" id="btnImport">${t('common.import')}</button>
             <button class="btn" id="btnExport">${t('common.export')}</button>
+            <button class="btn sm" id="btnExportOpts" title="${t('exp.options')}">⋯</button>
             <button class="btn danger" id="btnDelColl">${t('coll.del')}</button>
           </div>
         </div>
@@ -955,6 +979,7 @@ async function renderCollection(cid){
     <div class="card glass">
       <div class="row" style="margin-bottom:10px">
         <h3 style="margin:0;flex:1">${t('common.chapters')} <span class="muted" id="chCount"></span></h3>
+        <button class="btn sm" id="retryFailed" style="display:none"></button>
         <button class="btn sm" id="addBlank">${t('common.blank')}</button>
         <button class="btn sm" id="addByUrl">${t('common.fromUrl')}</button>
       </div>
@@ -974,7 +999,21 @@ async function renderCollection(cid){
     fr.readAsDataURL(f); };
   $('#findCover').onclick = ()=>coverSearchModal(cid, c.title);
   $('#btnImport').onclick = ()=>importModal(cid);
-  $('#btnExport').onclick = ()=>exportModal(cid);
+  // 一键导出:默认就把图片下好(正文先写完,图片在最后统一下)。
+  // 以前每次都弹一层「要不要下图片」的对话框,用户要点的次数全耗在这上面。
+  // 想改选项的人走旁边那个「导出选项…」。
+  $('#btnExport').onclick = ()=>exportNow(cid);
+  $('#btnExportOpts').onclick = ()=>exportModal(cid);
+  $('#retryFailed').onclick = async ()=>{
+    const r = await post('/api/articles/refetchFailed',{collectionId:cid});
+    if(!r || !r.job){ toast(t('ch.retryNone')); return; }
+    openJob(r.job, j=>{
+      const res=(j && j.result)||{};
+      toast(t('ch.retryDone').replace('{ok}',res.fixedCount||0)
+                               .replace('{bad}',res.failedCount||0), 5000);
+      loadChapters(cid);
+    });
+  };
   $('#btnDelColl').onclick = async ()=>{
     if(!confirm(t('coll.delConfirm'))) return;
     await post('/api/collection/delete',{id:cid}); setView('collections'); };
@@ -998,6 +1037,14 @@ async function loadChapters(cid){
   const A = r.articles;
   $('#chCount').textContent = A.length + ' ' + t('coll.chapters');
   const box = $('#chList');
+  // 有多少章没抓好看得见,并且能**一次全重抓**。
+  // 用户原话:「不然我得一个一个点击」。按钮只在确实有失败章节时出现。
+  const bad = A.filter(a=>a.note && !/已跳过|skipped/i.test(a.note)).length;
+  const rf = $('#retryFailed');
+  if(rf){
+    rf.style.display = bad ? '' : 'none';
+    rf.textContent = t('ch.retryFailed').replace('{n}', bad);
+  }
   if(!A.length){ box.innerHTML = `<div class="empty">${t('ch.empty')}</div>`; return; }
   box.innerHTML = A.map((a,i)=>`<div class="ch${a.note?' warn':''}">
       <div class="no">${i+1}</div>
@@ -1255,6 +1302,19 @@ function importModal(cid){
     }
   }
   paint();
+}
+
+/* 一键导出(默认路径)。
+   用户要求:「下载图片作为默认选项,每次都先下好全部字之后之后再下载图片,
+   但是没下载好的能重新插入这个功能要保留,不要每次生成书都很繁琐」。
+   ⇒ 主按钮直接开始:正文全部写进书里之后,图片在最后统一下载并内嵌;
+     缺图的报告和「补进这本书」按钮照旧由 showImageReport 负责。 */
+async function exportNow(cid){
+  toast(t('exp.starting'), 2600);
+  const r = await post('/api/export',{collectionId:cid,
+    embedImages:true, removePreface:false});
+  closeModal();
+  openJob(r.job, j=>showImageReport(j, cid));
 }
 
 function exportModal(cid){
@@ -1765,13 +1825,19 @@ async function renderSettings(){
         <b>${t('set.appver')}</b><span>CEVTUO-RWP ${esc(s.app_version||'—')}</span>
         <b>${t('set.ver')}</b><span>${esc(c.version||'—')}</span>
         <b>${t('set.profile')}</b><span>${c.profile_copied?`<span class="tag ok">${t('set.ready')}</span>`:`<span class="tag warn">${t('set.notReady')}</span>`}</span>
+        <b>${t('set.ext')}</b><span id="extInfo">${(c.extensions&&c.extensions.length)
+          ? c.extensions.map(x=>`<span class="tag ok">${esc(x.name)} ${esc(x.version)}</span>`).join(' ')
+          : `<span class="tag warn">${t('set.extNone')}</span>`}</span>
+        <b>${t('set.extDir')}</b><span class="muted"><code>${esc(c.extensions_dir||'')}</code></span>
       </div>
       <div class="row" style="margin-top:12px">
         <button class="btn primary" id="cStart">${t('set.startChrome')}</button>
         <button class="btn" id="cSync">${t('set.sync')}</button>
+        <button class="btn" id="cExt">${t('set.extSync')}</button>
         <button class="btn" id="cTest">${t('set.test')}</button>
       </div>
       <p class="muted" style="margin:12px 0 0">${t('set.syncNote')}</p>
+      <p class="muted" style="margin:8px 0 0">${t('set.extNote')}</p>
     </div>
 
     <div class="card glass">
@@ -1800,7 +1866,7 @@ async function renderSettings(){
         和他设完之后的样子就不是一回事 —— 那比没有预览更糟。 */
   function paintBgPrev(){
     const box = $('#bgPrev'); if(!box) return;
-    box.innerHTML = bg.has_bg
+    box.innerHTML = (bg.has_bg || bg.has_default)
       ? `<div class="muted" style="margin:12px 0 6px">${t('set.bgPrev')}</div>
          <div style="width:100%;max-width:520px;aspect-ratio:16/10;
            border-radius:var(--radius-md);border:1px solid var(--line-soft);
@@ -1861,6 +1927,24 @@ async function renderSettings(){
     refreshState(); renderSettings(); };
   $('#cStart').onclick = async ()=>{ const r = await post('/api/capture/ensure',{}); toast(r.ok?'Chrome OK':r.err); renderSettings(); };
   $('#cSync').onclick = async ()=>{ toast('…',6000); await post('/api/capture/sync',{}); toast('OK'); renderSettings(); };
+  // 「重新读取插件」—— 在 Chrome 里更新付费墙插件之后点这一下。
+  // 它会重新同步 profile(读到你 Chrome 里实际加载的那份)并重启自动化浏览器,
+  // 让新版插件立刻生效,而不是继续用缓存里的旧版。
+  $('#cExt').onclick = async ()=>{
+    const b = $('#cExt'), old = b.textContent;
+    b.disabled = true; b.textContent = t('set.extSyncing');
+    let r = null, err = '';
+    try{ r = await post('/api/extensions/refresh',{}); }
+    catch(e){ err = e.message || String(e); }
+    b.disabled = false; b.textContent = old;
+    if(!r || !r.ok){
+      toast(t('set.extBad') + (err || (r && r.err) || '?'), 6000);
+    } else {
+      const names = (r.extensions||[]).map(x=>`${x.name} ${x.version}`).join(' · ');
+      toast(t('set.extOk') + (names || t('set.extNone')), 6000);
+    }
+    renderSettings();
+  };
   $('#cTest').onclick = async ()=>{ const u=prompt('URL','https://example.com'); if(!u) return;
     const r = await post('/api/capture/test',{url:u});
     alert(r.ok? (r.len+' chars\n'+r.title) : r.err); };

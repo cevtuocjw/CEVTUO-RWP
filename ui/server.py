@@ -51,7 +51,7 @@ PORT = 8611
 # ⚠️ 以前设置页那行「版本」显示的是 capture.status()["version"],那是 **Chrome 的版本**,
 # 不是本软件的。label 写的确实是「浏览器版本」,但用户看到的就一个版本号,
 # 会当成软件版本 —— 加这一行区分开。
-APP_VERSION = "1.7"
+APP_VERSION = "1.8"
 
 # ⚠️ 这个名字不能叫 log —— 下面几行就有一个 def log(*a)。
 # 叫 log 的话会被那个函数覆盖,而 AttributeError 出现在两个很难查的地方:
@@ -424,6 +424,83 @@ def fill_book_images_job(ctx, path):
                        "failed": r["still"]}}
 
 
+def refetch_failed_job(ctx, cid):
+    """一键重抓**这个合集里所有没抓好的章节**。
+
+    ⚠️ 用户原话:「没获取好的书章节,也能有一个一键的功能,重新获取这些
+    没有获取好的页面,不然我得一个一个点击」。所以这里不是"重抓全部" ——
+    只挑 note 非空(抓取失败 / 正文偏短)且有原始网址的章节。
+
+    用户自己点过「跳过」的章节**不重抓**:那不是失败,是他的选择。
+    真要抓,单章上的「再次获取」一直在。
+    """
+    arts = store.list_articles(cid)
+    todo = [a for a in arts
+            if (a.get("note") or "").strip()
+            and (a.get("note") or "") != imports.SKIP_NOTE
+            and (a.get("url") or "").strip()]
+    skipped = [a for a in arts if (a.get("note") or "") == imports.SKIP_NOTE]
+    ignored = [a for a in arts
+               if (a.get("note") or "").strip()
+               and (a.get("note") or "") != imports.SKIP_NOTE
+               and not (a.get("url") or "").strip()]
+    ctx.log(f"待重抓 {len(todo)} 章"
+            + (f",另有 {len(skipped)} 章是你手动跳过的,不动" if skipped else "")
+            + (f",{len(ignored)} 章没有原始网址,跳过" if ignored else ""))
+    if not todo:
+        return {"ok": True, "total": 0, "fixed": 0, "failed": [],
+                "note": "没有需要重抓的章节"}
+    ctx.set_total(len(todo))
+    if todo:
+        try:
+            ok, err = capture.ensure()
+            if not ok:
+                ctx.log(f"浏览器没起来({err}),会退回普通 HTTP 抓取")
+        except Exception as e:
+            ctx.log(f"浏览器准备失败({e}),会退回普通 HTTP 抓取")
+    fixed, failed = [], []
+    for i, a in enumerate(todo):
+        if ctx.should_stop():
+            raise jobs.Cancelled("已取消")
+        ctx.begin_item(i)
+        ctx.progress(i, len(todo), f"正在重抓第 {i + 1}/{len(todo)} 章:{a.get('title') or ''}")
+        try:
+            art, why = imports.article_from_url(
+                (a.get("url") or "").strip(), use_chrome=True,
+                title_hint=a.get("title"),
+                should_stop=ctx.should_stop,
+                should_skip=lambda: ctx.should_skip(i))
+        except (jobs.Cancelled, capture.Cancelled):
+            raise
+        except capture.Skipped:
+            failed.append({"id": a["id"], "title": a.get("title"),
+                           "why": "已跳过"})
+            ctx.end_item(i)
+            continue
+        except Exception as e:
+            art, why = None, f"重抓失败:{str(e)[:120]}"
+        ctx.end_item(i)
+        if not art:
+            store.update_article(a["id"], note=why or "重抓失败")
+            failed.append({"id": a["id"], "title": a.get("title"),
+                           "why": why or "重抓失败"})
+            ctx.log(f"  ✗ {a.get('title') or a['id']} —— {why or '重抓失败'}")
+        else:
+            store.update_article(a["id"], title=art["title"],
+                                 parsed_html=art["content"],
+                                 url=(a.get("url") or "").strip(),
+                                 mode=art["mode"],
+                                 note=art.get("note") or "")
+            fixed.append({"id": a["id"], "title": art["title"],
+                          "chars": art["text_len"]})
+            ctx.log(f"  ✓ {art['title']} —— {art['text_len']} 字")
+        ctx.progress(i + 1, len(todo),
+                     f"已处理 {i + 1}/{len(todo)}(成功 {len(fixed)},失败 {len(failed)})")
+    return {"ok": True, "total": len(todo), "fixed": fixed,
+            "fixedCount": len(fixed), "failed": failed,
+            "failedCount": len(failed)}
+
+
 def rss_generate_job(ctx, payload):
     # 用 sys.executable —— 打包形态下是自带的 Python,开发形态下是 .venv 的
     args = [sys.executable, str(CODE / "rss2epub.py"),
@@ -501,10 +578,18 @@ def _bg_path():
     return store.lib_dir() / "bg.jpg"
 
 
+# 自带壁纸(用户 2026-10-26 指定)。没有自定义背景时用它,而不是裸渐变。
+DEFAULT_BG = UI_DIR / "default-bg.jpg"
+
+
 def _bg_info():
     p = _bg_path()
     if not p.exists():
-        return {"has_bg": False}
+        if DEFAULT_BG.exists():
+            return {"has_bg": False, "has_default": True,
+                    "mtime": int(DEFAULT_BG.stat().st_mtime),
+                    "bytes": DEFAULT_BG.stat().st_size}
+        return {"has_bg": False, "has_default": False}
     try:
         from PIL import Image
         with Image.open(p) as im:
@@ -1060,6 +1145,32 @@ class Handler(BaseHTTPRequestHandler):
             return {"ok": True, "article": store.get_article(a["id"]),
                     "chars": art["text_len"], "via": art["via"]}
 
+        # 一键重抓**所有没抓好的章节**(只挑 note 非空且有网址的)
+        if r == "/api/articles/refetchFailed":
+            cid = (b.get("collectionId") or "").strip()
+            if not cid:
+                return {"ok": False, "err": "缺少合集 id"}
+            return {"job": jobs.start(
+                "refetch", "重抓没获取好的章节",
+                lambda ctx: refetch_failed_job(ctx, cid))["id"]}
+
+        # 用户在 Chrome 里更新了付费墙插件 → 重新同步 profile + 重新识别扩展。
+        # 以前没有这个入口,插件更新后 app 永远加载的是旧副本,而且毫无提示。
+        if r == "/api/extensions/refresh":
+            capture.kill_chrome()
+            time.sleep(1.0)
+            ok = capture.sync_profile(force=True)
+            exts = capture.extension_inventory(force=True)
+            err = ""
+            try:
+                served, err = capture.ensure()
+                ok = ok and served
+            except Exception as e:
+                err = str(e)
+            return {"ok": ok, "err": err, "extensions": exts,
+                    "extensions_dir": str(BASE / "extensions"),
+                    "status": capture.status()}
+
         # 给**指定那一本**补缺图(不重新做书)
         if r == "/api/book/fillImages":
             raw = (b.get("path") or "").strip()
@@ -1479,13 +1590,19 @@ class Handler(BaseHTTPRequestHandler):
         """
         p = _bg_path()
         if not p.exists():
-            self.send_error(404, "no custom background")
+            # 没有自定义背景 → 发**自带壁纸**(用户指定的那张),
+            # 而不是 404。以前 404 时界面落回纯渐变,看起来像"没设背景"。
+            p = DEFAULT_BG if DEFAULT_BG.exists() else p
+        if not p.exists():
+            self.send_error(404, "no background")
             return
         data = p.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", "image/jpeg")
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store")   # 换背景要立刻看见
+        # ⚠️ 自带壁纸可以缓存(它不会变);自定义背景要 no-store(换图立刻可见)。
+        self.send_header("Cache-Control",
+                         "no-store" if p == _bg_path() else "max-age=86400")
         self.end_headers()
         self.wfile.write(data)
 

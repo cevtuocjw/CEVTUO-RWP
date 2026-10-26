@@ -498,22 +498,20 @@ def build(collection, articles, out_path, opts=None, on_progress=None):
         except Exception as e:
             log.warning("生成封面失败: %s", e)
 
-    # ---- 图片:先全部并发下载,再写章节 ----
+    # ---- 正文先全部写进书,图片最后统一下载 ----
+    # 用户要求:「每次都先下好全部字之后之后再下载图片」。顺序不只是仪式感:
+    # 图片下载慢的时候,进度条和日志里能清楚看到「正文已经完成,现在在补图」,
+    # 而不是一开始就卡在一条看不出用途的图片请求上。
+    embed = bool(opts.get("embed_images", True))
     embedder = ImageEmbedder(limit=int(opts.get("max_images") or 800),
                              on_progress=report)
-    if opts.get("embed_images", True):
-        bodies = [a.get("parsed_html") or "" for a in usable]
-        urls = embedder.collect(bodies)
-        if urls:
-            report(0, len(urls), f"准备下载 {len(urls)} 张图片")
-            embedder.download(urls)
+    bodies = [a.get("parsed_html") or "" for a in usable]
+    urls = embedder.collect(bodies) if embed else []
 
-    chapters, spine = [], []
+    chapters, spine, pending = [], [], []
     total = len(usable)
     for i, a in enumerate(usable):
         body = a.get("parsed_html") or ""
-        if opts.get("embed_images", True):
-            body = embedder.rewrite(body)
         elink = a.get("url") or ""
         # 章节页眉三件套,和每日书 `feed_title · 日期 · 原文` 一一对应:
         #   来源(域名) · 日期 · 原文链接
@@ -527,17 +525,30 @@ def build(collection, articles, out_path, opts=None, on_progress=None):
         if elink:
             meta.append(f'<a href="{_esc(elink)}">原文链接</a>')
         body = _strip_dup_title(body, a.get("title"))
-        inner = (_nav_bar(i, total)
-                 + f'<h2>{_esc(a.get("title") or "未命名")}</h2>'
-                 + (f'<p class="meta">{" · ".join(meta)}</p>' if meta else "")
-                 + f'<div class="content">{body}</div>')
+        head = (_nav_bar(i, total)
+                + f'<h2>{_esc(a.get("title") or "未命名")}</h2>'
+                + (f'<p class="meta">{" · ".join(meta)}</p>' if meta else "")
+                + '<div class="content">')
+        title_i = a.get("title") or f"第 {i+1} 篇"
         ch = epub.EpubHtml(uid=f"ch{i}", file_name=f"ch{i}.xhtml",
-                           title=(a.get("title") or f"第 {i+1} 篇")[:120])
-        ch.content = _xhtml(a.get("title") or f"第 {i+1} 篇", inner)
+                           title=title_i[:120])
+        ch.content = _xhtml(title_i, head + body + "</div>")
         book.add_item(style(ch))
         chapters.append(ch)
         spine.append(ch)
+        pending.append((ch, head, body, title_i))
         report(i + 1, total, f"写入章节 {i+1}/{total}")
+
+    # 正文全部落盘之后再下载图片;进度按「所有章节 + 所有图片」连续前进。
+    if embed and urls:
+        report(total, total + len(urls),
+               f"正文已写完,开始下载 {len(urls)} 张图片")
+        embedder.on_progress = lambda d, t, m=None: report(total + d,
+                                                           total + t, m)
+        embedder.download(urls)
+        for ch, head, body, title_i in pending:
+            ch.content = _xhtml(title_i, head + embedder.rewrite(body) + "</div>")
+        report(total + len(urls), total + len(urls), "图片已内嵌")
 
     for uid, fn, mt, blob in embedder.blobs:
         book.add_item(epub.EpubImage(uid=uid, file_name=fn, media_type=mt,

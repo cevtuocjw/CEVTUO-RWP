@@ -87,6 +87,41 @@ def http_get(url, timeout=25):
     return r.text
 
 
+# --------------------------------------------------------------- 阅读器代理 ---
+# ⚠️⚠️ 为什么需要这一层(2026-10-26 用户报「new york times 要确保好用」):
+#     NYT 前面是 DataDome。它**不看 UA、不看 headless**——同一台机器上
+#     真 Chrome、非 headless、换 5 个代理节点,拿到的都是同一张 771 字节的
+#     「Please enable JS and disable any ad blocker」。
+#     判定发生在**我们的出口 IP**上,所以本机怎么改浏览器参数都没用。
+#
+#     而 Yandex 的网页翻译代理是**它自己的服务器去抓**,出口 IP 不同,
+#     实测同一篇 NYT 能拿到 13505 字正文(标题、正文都对得上)。
+#     ⇒ 只把它当**兜底**:正常抓取拿到的正文够长时,永远不走这条。
+#     站点是公开网页,不涉及登录态;但它确实经过第三方,所以日志里要写明。
+#
+#     只用于「本机被反爬挡住」的情况,不是通用提取器 —— 对 FT/Economist
+#     这种**付费墙**(不是反爬)无效,它们仍然靠 Bypass Paywalls Clean。
+READER_URL = "https://translate.yandex.com/translate?url={u}&lang={lang}"
+
+
+def reader_get(url, timeout=40, lang="en"):
+    """通过网页翻译代理取整页 HTML。失败返回 ("", 原因)。"""
+    import requests
+    from urllib.parse import quote
+    if not re.match(r"^https?://", str(url or ""), re.I):
+        return "", "不是 http(s) 链接"
+    try:
+        r = requests.get(READER_URL.format(u=quote(url, safe=""), lang=lang),
+                         headers={"User-Agent": UA}, timeout=timeout)
+        r.raise_for_status()
+        if "html" not in (r.headers.get("Content-Type") or "").lower():
+            return "", "阅读器没有返回网页"
+        return r.text, ""
+    except Exception as e:
+        log.warning("阅读器代理失败 %s: %s", url, e)
+        return "", _short_err(e)
+
+
 # 浏览器错误页的措辞 —— 就是用户在地址栏里看到的那几句话。
 _ERRTEXT = re.compile(
     r"(检查您的互联网连接|请检查所有网线|意外终止了连接|连接已重置|"
@@ -244,6 +279,18 @@ def article_from_url(url, use_chrome=True, title_hint=None, timeout=60,
     if not html:
         return None, (err or "抓取失败")
     art = extract_page.extract_article(html, url, title_hint=title_hint)
+    # ⚠️ 本机被反爬挡住时,换**阅读器代理**再试一次(见 reader_get 上面的注释)。
+    #    只在「几乎一个字都没抽出来」时才走这条 —— 正常文章不会因此多等一次请求。
+    if not art or art["text_len"] < 60:
+        rhtml, _rerr = reader_get(url, timeout=min(timeout, 45))
+        if rhtml:
+            rart = extract_page.extract_article(rhtml, url,
+                                                title_hint=title_hint)
+            if rart and rart["text_len"] >= 60:
+                art, html, via = rart, rhtml, "reader"
+                art["method"] = "reader"
+                log.info("本机被挡,已通过阅读器代理取到 %s 字:%s",
+                         art["text_len"], url)
     if not art or art["text_len"] < 60:
         title = title_hint or extract_page.guess_title(html, url)
         body = sanitize.clean_html(html)

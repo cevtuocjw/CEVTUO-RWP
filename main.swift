@@ -13,6 +13,27 @@ let kPort = 8611
 let kBase = URL(string: "http://127.0.0.1:8611")!
 let kAppName = "CEVTUO-RWP"
 
+/// 窗口最上沿的一条拖拽带。
+///
+/// 为什么需要它:窗口用了 `.fullSizeContentView` + 透明标题栏,WKWebView 一直
+/// 铺到 y=0,把标题栏原本那条拖拽区盖住了 —— 结果就是**窗口没有地方可以拖**。
+/// 这条 12px 高的透明带只压在页面顶部 12px 的内边距上(不挡任何控件),
+/// 鼠标放上去变手型,按住就能拖;双击则是 macOS 惯常的「缩放窗口」。
+final class DragStrip: NSView {
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2 {
+            window?.performZoom(nil)
+            return
+        }
+        window?.performDrag(with: event)
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .openHand)
+    }
+}
+
+
 final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate {
 
     var window: NSWindow!
@@ -181,6 +202,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         window.titleVisibility = .hidden
         window.minSize = NSSize(width: 960, height: 640)
         window.contentView = webView
+        // 让窗口背景也能拖(侧边栏等空白处);最上沿另有专门的 DragStrip。
+        window.isMovableByWindowBackground = true
+
+        // 最上沿 12px 的拖拽带。⚠️ 左边留 78px 给红黄绿三个交通灯 ——
+        // 盖住它们的话窗口就关不掉了。页面本身顶部有 12px 内边距,
+        // 所以这条带压的是空白,不会挡住任何按钮。
+        let strip = DragStrip()
+        strip.translatesAutoresizingMaskIntoConstraints = false
+        webView.addSubview(strip)
+        // 中间一个小横条,提示「这里可以拖」;深浅色主题下都看得见。
+        let handle = NSView()
+        handle.wantsLayer = true
+        handle.layer?.backgroundColor =
+            NSColor.secondaryLabelColor.withAlphaComponent(0.35).cgColor
+        handle.layer?.cornerRadius = 2
+        handle.translatesAutoresizingMaskIntoConstraints = false
+        strip.addSubview(handle)
+        NSLayoutConstraint.activate([
+            strip.topAnchor.constraint(equalTo: webView.topAnchor),
+            strip.leadingAnchor.constraint(equalTo: webView.leadingAnchor,
+                                           constant: 78),
+            strip.trailingAnchor.constraint(equalTo: webView.trailingAnchor),
+            strip.heightAnchor.constraint(equalToConstant: 12),
+            handle.centerXAnchor.constraint(equalTo: strip.centerXAnchor),
+            handle.topAnchor.constraint(equalTo: strip.topAnchor, constant: 4),
+            handle.widthAnchor.constraint(equalToConstant: 44),
+            handle.heightAnchor.constraint(equalToConstant: 4),
+        ])
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
